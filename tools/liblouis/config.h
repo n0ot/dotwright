@@ -1,0 +1,1 @@
+#define PACKAGE_VERSION "3.39.0"

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dotwright</title>
+  </head>
+  <body>
+    <header class="masthead">
+      <h1>Dotwright</h1>
+      <p class="tagline">Learn by Brailling</p>
+    </header>
+
+    <div class="toolbar" role="group" aria-label="Document">
+      <button type="button" id="new-doc">New document</button>
+      <button type="button" id="open-doc">Open BRF…</button>
+      <button type="button" id="save-doc">Save BRF</button>
+      <button type="button" id="save-as-doc" hidden>Save BRF as…</button>
+      <button type="button" id="toggle-feedback" aria-pressed="true">Feedback</button>
+      <a href="#help" id="show-help" class="help-link">Instructions</a>
+    </div>
+
+    <p id="file-status" class="file-status" role="status"></p>
+
+    <main>
+      <label for="editor" class="editor-label">Braille document</label>
+      <div class="sheet-scroll">
+        <div class="sheet" id="sheet">
+          <div class="overlay" id="overlay" aria-hidden="true"></div>
+          <textarea
+            id="editor"
+            wrap="off"
+            spellcheck="false"
+            autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
+            disabled
+          ></textarea>
+        </div>
+      </div>
+      <textarea
+        id="print-view"
+        class="visually-hidden"
+        wrap="off"
+        aria-readonly="true"
+        aria-label="Print interlining"
+        spellcheck="false"
+      ></textarea>
+
+      <section id="word-panel" class="word-panel" aria-labelledby="word-panel-title">
+        <h2 id="word-panel-title">Word at cursor</h2>
+        <dl id="word-details"></dl>
+      </section>
+    </main>
+
+    <footer class="recovery">
+      <p id="recovery-status" class="recovery-status"></p>
+      <p id="recovery-warning" class="recovery-warning" role="alert"></p>
+    </footer>
+
+    <dialog id="help" aria-labelledby="help-title">
+      <h2 id="help-title" tabindex="-1" autofocus>Instructions</h2>
+      <h3>Writing</h3>
+      <p>Press the keys of a cell together, then release them.</p>
+      <p id="current-keys"></p>
+      <ul>
+        <li><kbd>Enter</kbd> starts a new line. Space or Enter finishes a word, and feedback for it appears then.</li>
+        <li>Lines are 40 cells. A word that would pass cell 40 moves to a new line; pages are 25 lines.</li>
+        <li>Arrow keys, Backspace, Delete, Shift selection, cut, copy and paste work as usual.</li>
+        <li><kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> undoes; add <kbd>Shift</kbd> to redo.</li>
+      </ul>
+      <h3>Braille keys</h3>
+      <p>
+        <kbd>Alt</kbd>+<kbd>B</kbd> changes which keys enter dots 1 to 6, to suit your keyboard
+        layout. The space bar always enters a space.
+      </p>
+      <p><button type="button" id="change-keys">Change braille keys</button></p>
+      <h3>Feedback</h3>
+      <ul>
+        <li><kbd>Alt</kbd>+<kbd>W</kbd>: print and contraction status of the word at the cursor.</li>
+        <li><kbd>Alt</kbd>+<kbd>R</kbd>: reveal the reference braille for the word at the cursor. <kbd>Escape</kbd> hides it.</li>
+        <li><kbd>Alt</kbd>+<kbd>N</kbd>: next word with an issue; <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>: previous.</li>
+        <li>
+          <kbd>Tab</kbd> from the document goes to the print view: a read-only copy of the print
+          interlining, line for line. Moving through it moves the braille cursor to the same word,
+          and the commands above work there too.
+        </li>
+        <li><kbd>Alt</kbd>+<kbd>T</kbd>: turn feedback (print and contraction indicators) on or off.</li>
+      </ul>
+      <h3>Document</h3>
+      <ul>
+        <li><kbd>Alt</kbd>+<kbd>L</kbd>: page, line and cell of the cursor.</li>
+        <li>
+          <kbd>Alt</kbd>+<kbd>G</kbd>: go to a line and cell. Lines are counted from the start of
+          the document, so line 26 is the first line of page 2.
+        </li>
+        <li><kbd>Alt</kbd>+<kbd>K</kbd>: turn announcing each entered cell on or off.</li>
+        <li><kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>O</kbd>: open a BRF file. <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd>: save a BRF file.</li>
+        <li><kbd>Alt</kbd>+<kbd>H</kbd>: these instructions.</li>
+      </ul>
+      <h3>Saving and recovery</h3>
+      <p>
+        Save a BRF file to keep your work. This browser also keeps a recovery copy in case the page
+        is refreshed, but it stays only in this browser on this device and is lost if browser data
+        is cleared. Your braille never leaves your device.
+      </p>
+      <form method="dialog"><button>Close</button></form>
+    </dialog>
+
+    <dialog id="goto-dialog" aria-labelledby="goto-title">
+      <h2 id="goto-title">Go to</h2>
+      <form id="goto-form">
+        <label for="goto-line">Line</label>
+        <input id="goto-line" inputmode="numeric" autocomplete="off" aria-describedby="goto-error" />
+        <label for="goto-cell">Cell</label>
+        <input id="goto-cell" inputmode="numeric" autocomplete="off" aria-describedby="goto-error" />
+        <p id="goto-error" class="field-error" role="alert"></p>
+        <p>
+          <button type="submit">Go</button>
+          <button type="button" id="goto-cancel">Cancel</button>
+        </p>
+      </form>
+    </dialog>
+
+    <dialog id="save-dialog" aria-labelledby="save-title">
+      <h2 id="save-title">Save BRF</h2>
+      <form id="save-form">
+        <label for="file-name">File name</label>
+        <input id="file-name" autocomplete="off" spellcheck="false" aria-describedby="file-name-error" />
+        <p id="file-name-error" class="field-error" role="alert"></p>
+        <p>
+          <button type="submit">Save</button>
+          <button type="button" id="save-cancel">Cancel</button>
+        </p>
+      </form>
+    </dialog>
+
+    <dialog id="keys-dialog" aria-labelledby="keys-title">
+      <h2 id="keys-title">Braille keys</h2>
+      <form id="keys-form">
+        <label for="dot-keys">Keys for dots 1 to 6, in order</label>
+        <input
+          id="dot-keys"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          aria-describedby="dot-keys-error"
+        />
+        <p id="dot-keys-error" class="field-error" role="alert"></p>
+        <p>
+          <button type="submit">Save</button>
+          <button type="button" id="keys-default">Use f d s j k l</button>
+          <button type="button" id="keys-cancel">Cancel</button>
+        </p>
+      </form>
+    </dialog>
+
+    <div id="announcements"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
