@@ -10,7 +10,7 @@ You write braille yourself, cell by cell, with six-key entry on an ordinary keyb
 
 - the print reading of what you wrote, above the braille
 - whether the word differs from its fully contracted UEB form, or couldn't be read at all
-- the fully contracted reference form, but only when you ask for it
+- the fully contracted reference form, but only when you ask for it, with Alt+R or the Show reference button
 
 Dotwright never changes your braille. There's no "fix" button: you make every correction yourself, which is the point. Feedback can be turned off entirely, so you can write on your own and check later.
 

@@ -229,6 +229,14 @@ button:focus-visible {
 .word-panel dd {
   margin: 0;
 }
+.panel-button {
+  padding: 2px 10px;
+  font-size: 14px;
+}
+.braille + .panel-button,
+.braille ~ .panel-button {
+  margin-left: 12px;
+}
 .braille {
   font: 26px/1.2 'Dotwright Braille', monospace;
   margin-right: 8px;

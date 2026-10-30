@@ -375,6 +375,19 @@ keepCaretOnKeyboardFocus(printView, () => {
   return [offset, offset];
 });
 
+/** A word panel button that runs its action, then returns to the document so writing can continue. */
+function panelButton(label: string, action: () => void): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'panel-button';
+  button.textContent = label;
+  button.addEventListener('click', () => {
+    action();
+    textarea.focus();
+  });
+  return button;
+}
+
 function renderWordPanel(state: WordState | null) {
   wordPanel.hidden = !feedbackOn;
   if (!feedbackOn) return;
@@ -398,11 +411,12 @@ function renderWordPanel(state: WordState | null) {
     } else {
       rows.push(['Print', f.print], ['Status', statusText(f)]);
       if (f.reference) {
-        rows.push(
-          revealedAt === state.word.start
-            ? ['Reference', brailleNode(f.reference)]
-            : ['Reference', 'Hidden'],
+        const revealed = revealedAt === state.word.start;
+        const value = revealed ? brailleNode(f.reference) : document.createElement('span');
+        value.append(
+          panelButton(revealed ? 'Hide reference' : 'Show reference', revealed ? hideReference : revealReference),
         );
+        rows.push(['Reference', value]);
       }
     }
   }

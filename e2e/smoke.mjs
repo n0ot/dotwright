@@ -51,6 +51,20 @@ for (const browserType of [chromium, webkit]) {
   check('Alt+R reveals reference', (await announced(page)).includes('Reference: ampersand'), await announced(page));
   check('reveal leaves braille unchanged', (await ta.inputValue()).startsWith('and & '));
   check('reference shown in panel', (await page.locator('#word-details').textContent()).includes('&'));
+  await page.keyboard.press('Escape');
+
+  // The same with the mouse: click the flagged word, then Show reference.
+  const box = await ta.boundingBox();
+  await page.mouse.click(box.x + 40, box.y + 42);
+  const panel = page.locator('#word-details');
+  check('clicked word shows a Show reference button', await panel.getByRole('button', { name: 'Show reference' }).isVisible());
+  await panel.getByRole('button', { name: 'Show reference' }).click();
+  check('Show reference reveals the reference', (await panel.textContent()).includes('&') && await panel.getByRole('button', { name: 'Hide reference' }).isVisible());
+  check('Show reference leaves braille unchanged and returns to the document',
+    (await ta.inputValue()).startsWith('and & ') && await page.evaluate(() => document.activeElement.id === 'editor'));
+  await panel.getByRole('button', { name: 'Hide reference' }).click();
+  check('Hide reference hides it', await panel.getByRole('button', { name: 'Show reference' }).isVisible());
+  await page.keyboard.press(browserType === webkit ? 'Meta+ArrowLeft' : 'Home');
 
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowRight');
