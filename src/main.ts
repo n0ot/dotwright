@@ -9,16 +9,15 @@ import { LINES_PER_PAGE, lineNumberOf, offsetOf, positionOf, wordAt, type Word }
 import { DEFAULT_DOT_KEYS, describeDotKeys, loadDotKeys, parseDotKeys, saveDotKeys } from './keymap';
 import { keepCaretOnKeyboardFocus } from './focusCaret';
 import { initLouis } from './louis';
+import { loadPrefs, savePrefs } from './prefs';
 import { clearRecovery, loadRecovery, writeRecovery } from './recovery';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const textarea = byId<HTMLTextAreaElement>('editor');
 const overlay = byId('overlay');
-const wordPanel = byId('word-panel');
-const wordDetails = byId('word-details');
+const popover = byId('word-popover');
 const fileStatus = byId('file-status');
-const recoveryStatus = byId('recovery-status');
 const recoveryWarning = byId('recovery-warning');
 const feedbackButton = byId('toggle-feedback');
 const saveAsButton = byId('save-as-doc');
@@ -38,22 +37,30 @@ const gotoError = byId('goto-error');
 const keysForm = byId<HTMLFormElement>('keys-form');
 const dotKeysInput = byId<HTMLInputElement>('dot-keys');
 const dotKeysError = byId('dot-keys-error');
+const settingsDialog = byId<HTMLDialogElement>('settings-dialog');
+const showEmptyDots = byId<HTMLInputElement>('show-empty-dots');
+const echoCellsInput = byId<HTMLInputElement>('echo-cells');
+const settingsKeys = byId('settings-keys');
 
 // Must match #editor in style.css.
 const FONT_SIZE = 30;
 const LINE = 84;
-const PAD = 24;
-const GLYPH_TOP = (LINE - FONT_SIZE * 1.04) / 2;
+const PAD = 28;
+const TOP = 12;
+const GLYPH_TOP = TOP + (LINE - FONT_SIZE * 1.04) / 2;
 
 let cell = FONT_SIZE * 0.6;
 let feedbackOn = true;
-let echoCells = true;
+const prefs = loadPrefs();
+let echoCells = prefs.echoCells;
 let fileName: string | null = null;
 let fileHandle: FileHandle | null = null;
 let savedText: string | null = null;
 let savedBy: 'file' | 'download' | null = null;
 let revealedAt: number | null = null;
 let recoveryTimer = 0;
+/** Start of the word with an error that the caret is in, for "contraction error" announcements. */
+let errorWordStart: number | null = null;
 
 const announcer = new Announcer(byId('announcements'));
 const say = (message: string) => announcer.say(message);
@@ -63,11 +70,13 @@ const editor = new BrailleEditor(textarea, {
     if (kind === 'space' || kind === 'newline') announceCompletedWord(kind);
     else if (kind === 'undo' || kind === 'redo') say(kind === 'undo' ? 'Undo' : 'Redo');
     dropRevealIfMoved();
+    errorWordStart = errorWordAtCaret();
     scheduleRecovery();
     render();
   },
   select() {
     dropRevealIfMoved();
+    announceErrorChange();
     render();
   },
   cell(ch) {
@@ -105,19 +114,40 @@ function stateAtCaret(): WordState | null {
 const isIssue = (f: WordFeedback | null) => f?.status === 'differs' || f?.status === 'unreadable';
 
 function statusText(f: WordFeedback): string {
-  const reference = f.passage === 'grade 1' ? 'uncontracted reference, in a grade 1 passage' : 'fully contracted reference';
+  const inGrade1 = f.passage === 'grade 1' ? ' in a grade 1 passage' : '';
   switch (f.status) {
     case 'matches':
-      return `Matches the ${reference}.`;
+      return `No contraction error${inGrade1}.`;
     case 'differs':
-      return `Possible contraction issue: differs from the ${reference}.`;
+      return `Contraction error${inGrade1}.`;
     case 'unreadable':
-      return f.passage === 'grade 1'
-        ? 'Some cells could not be interpreted in a grade 1 passage, so there is no reference form.'
-        : 'Some cells could not be interpreted, so there is no reference form.';
+      return `Can't read this braille${inGrade1}.`;
     case 'no-reference':
-      return 'No reference form is available for this word.';
+      return 'No correct form is available for this word.';
   }
+}
+
+/** Short name of a word's problem, for announcements. */
+const issueName = (f: WordFeedback) => (f.status === 'unreadable' ? "can't read" : 'contraction error');
+
+function errorWordAtCaret(): number | null {
+  if (!feedbackOn) return null;
+  const state = stateAtCaret();
+  return state && isIssue(state.feedback) ? state.word.start : null;
+}
+
+/**
+ * Says "contraction error" when the caret moves onto a word with an error and
+ * "out of contraction error" when it leaves, once per word, so reading cell
+ * by cell inside a word isn't interrupted.
+ */
+function announceErrorChange() {
+  const now = errorWordAtCaret();
+  if (now === errorWordStart) return;
+  const was = errorWordStart;
+  errorWordStart = now;
+  if (now !== null) say(issueName(checkDocument(editor.text).get(now)!));
+  else if (was !== null) say('out of contraction error');
 }
 
 function announceCompletedWord(kind: 'space' | 'newline') {
@@ -127,8 +157,7 @@ function announceCompletedWord(kind: 'space' | 'newline') {
   if (echoCells) parts.push(kind === 'space' ? 'space' : 'new line');
   if (feedbackOn && word) {
     const f = checkDocument(editor.text).get(word.start)!;
-    if (f.status === 'differs') parts.push('possible contraction issue');
-    else if (f.status === 'unreadable') parts.push('could not interpret');
+    if (isIssue(f)) parts.push(issueName(f));
   }
   if (parts.length) say(parts.join(', '));
 }
@@ -144,7 +173,7 @@ function speakWordFeedback() {
   if (!state) return say('No word at the cursor.');
   const f = state.feedback;
   if (!f) return say(`Unfinished word: ${spell(state.word.text)}. Feedback appears after Space or Enter.`);
-  say(`${f.print}. ${statusText(f)}${f.status === 'differs' ? ' Alt+R reveals the reference.' : ''}`);
+  say(`${f.print}. ${statusText(f)}${f.status === 'differs' ? ' Alt+R shows the correct form.' : ''}`);
 }
 
 function revealReference() {
@@ -158,8 +187,8 @@ function revealReference() {
   render();
   say(
     f.reference === f.braille
-      ? `Reference: ${spell(f.reference)}. Same as your entry.`
-      : `Reference: ${spell(f.reference)}. Your entry: ${spell(f.braille)}.`,
+      ? `Correct form: ${spell(f.reference)}. Same as your entry.`
+      : `Correct form: ${spell(f.reference)}. Your entry: ${spell(f.braille)}.`,
   );
 }
 
@@ -167,18 +196,20 @@ function hideReference() {
   if (revealedAt === null) return;
   revealedAt = null;
   render();
-  say('Reference hidden.');
+  say('Correct form hidden.');
 }
 
 function moveToIssue(direction: 1 | -1) {
   if (!feedbackOn) return say('Feedback is off. Alt+T turns it on.');
   const issues = wordStates().filter((s) => isIssue(s.feedback));
-  if (!issues.length) return say('No words with issues.');
+  if (!issues.length) return say('No contraction errors.');
   const caret = editor.selectionStart;
   const target =
     direction === 1
       ? (issues.find((s) => s.word.start > caret) ?? issues[0])
       : (issues.findLast((s) => s.word.end < caret) ?? issues.at(-1)!);
+  // This announcement says more than the one for moving onto the word.
+  errorWordStart = target.word.start;
   if (document.activeElement === printView) {
     editor.placeCaret(target.word.start);
     const offset = printOffsetFor(target.word.start);
@@ -194,9 +225,10 @@ function moveToIssue(direction: 1 | -1) {
 
 function toggleFeedback() {
   feedbackOn = !feedbackOn;
-  feedbackButton.setAttribute('aria-pressed', String(feedbackOn));
+  feedbackButton.setAttribute('aria-checked', String(feedbackOn));
   if (!feedbackOn && document.activeElement === printView) textarea.focus();
   revealedAt = null;
+  errorWordStart = errorWordAtCaret();
   render();
   say(feedbackOn ? 'Feedback on.' : 'Feedback off.');
 }
@@ -231,8 +263,9 @@ function render() {
   const display = editor.text;
   const lineStarts = [0];
   for (let i = 0; i < display.length; i++) if (display[i] === '\n') lineStarts.push(i + 1);
-  textarea.style.height = `${lineStarts.length * LINE}px`;
+  textarea.style.height = `${lineStarts.length * LINE + 2 * TOP}px`;
   overlay.replaceChildren();
+  if (prefs.shadowDots) place('dot-shadows', 0, 0, undefined, display);
 
   const lineOf = (offset: number) => {
     let i = lineStarts.length - 1;
@@ -241,8 +274,8 @@ function render() {
   };
 
   for (let i = 0; i < lineStarts.length; i += LINES_PER_PAGE) {
-    if (i > 0) place('page-break', 0, i * LINE);
-    place('page-label', 0, i * LINE + 2, undefined, `Page ${i / LINES_PER_PAGE + 1}`).style.left = 'auto';
+    if (i > 0) place('page-break', 0, TOP + i * LINE);
+    place('page-label', 0, TOP + i * LINE + 6, undefined, `Page ${i / LINES_PER_PAGE + 1}`).style.left = 'auto';
   }
 
   const states = wordStates();
@@ -278,7 +311,8 @@ function render() {
     }
   }
 
-  renderWordPanel(states.find((s) => s.word === caretWord) ?? null);
+  const caretState = states.find((s) => s.word === caretWord) ?? null;
+  renderPopover(caretState, caretState ? lineOf(caretState.word.start) : 0, lineStarts);
   renderPrintView(states, lineOf, lineStarts.length);
   renderFileStatus();
 }
@@ -375,60 +409,52 @@ keepCaretOnKeyboardFocus(printView, () => {
   return [offset, offset];
 });
 
-/** A word panel button that runs its action, then returns to the document so writing can continue. */
-function panelButton(label: string, action: () => void): HTMLButtonElement {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'panel-button';
-  button.textContent = label;
-  button.addEventListener('click', () => {
-    action();
-    textarea.focus();
-  });
-  return button;
-}
-
-function renderWordPanel(state: WordState | null) {
-  wordPanel.hidden = !feedbackOn;
-  if (!feedbackOn) return;
-  const rows: [string, string | Node][] = [];
-  const brailleNode = (b: string) => {
-    const span = document.createElement('span');
-    const dots = document.createElement('span');
-    dots.className = 'braille';
-    dots.setAttribute('aria-hidden', 'true');
-    dots.textContent = b;
-    span.append(dots, b);
-    return span;
-  };
-  if (!state) {
-    rows.push(['Word', 'None at the cursor']);
-  } else {
-    rows.push(['Your braille', brailleNode(state.word.text)]);
-    const f = state.feedback;
-    if (!f) {
-      rows.push(['Status', 'Unfinished']);
+/**
+ * A small card under the word at the caret when it has an error, so a mouse
+ * user can show its correct form. It doesn't take focus, so the caret stays
+ * in the document; keyboard and screen-reader users have Alt+R instead.
+ */
+function renderPopover(state: WordState | null, line: number, lineStarts: number[]) {
+  const f = state?.feedback;
+  popover.hidden = !feedbackOn || !state || !f || !isIssue(f);
+  if (popover.hidden || !state || !f) return;
+  const parts: Node[] = [];
+  const label = document.createElement('span');
+  label.className = `label ${f.status}`;
+  label.textContent = f.status === 'unreadable' ? "Can't read this braille" : 'Contraction error';
+  parts.push(label);
+  if (f.reference) {
+    if (revealedAt === state.word.start) {
+      const correct = document.createElement('span');
+      correct.className = 'correct';
+      const dots = document.createElement('span');
+      dots.className = 'braille';
+      dots.textContent = f.reference;
+      const ascii = document.createElement('span');
+      ascii.className = 'ascii';
+      ascii.textContent = f.reference;
+      correct.append('Correct:', dots, ascii);
+      parts.push(correct, popoverButton('Hide', hideReference));
     } else {
-      rows.push(['Print', f.print], ['Status', statusText(f)]);
-      if (f.reference) {
-        const revealed = revealedAt === state.word.start;
-        const value = revealed ? brailleNode(f.reference) : document.createElement('span');
-        value.append(
-          panelButton(revealed ? 'Hide reference' : 'Show reference', revealed ? hideReference : revealReference),
-        );
-        rows.push(['Reference', value]);
-      }
+      parts.push(popoverButton('Show correct form', revealReference));
     }
   }
-  wordDetails.replaceChildren(
-    ...rows.flatMap(([term, value]) => {
-      const dt = document.createElement('dt');
-      dt.textContent = term;
-      const dd = document.createElement('dd');
-      dd.append(value);
-      return [dt, dd];
-    }),
-  );
+  popover.replaceChildren(...parts);
+  const col = state.word.start - lineStarts[line];
+  popover.style.left = `${PAD + col * cell - 8}px`;
+  // In the gap below the wavy underline, above the next line's print.
+  popover.style.top = `${GLYPH_TOP + line * LINE + FONT_SIZE * 1.04 + 5}px`;
+}
+
+function popoverButton(label: string, action: () => void): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.tabIndex = -1;
+  button.textContent = label;
+  // Keep focus, and the caret, in the document.
+  button.addEventListener('mousedown', (e) => e.preventDefault());
+  button.addEventListener('click', action);
+  return button;
 }
 
 // ---- Files and recovery ---------------------------------------------------
@@ -442,7 +468,7 @@ function renderFileStatus() {
   else if (savedBy === 'download') detail = 'saved as a download';
   else if (savedText !== null) detail = 'all changes saved to the BRF file';
   else detail = 'empty';
-  fileStatus.textContent = `${name} — ${detail}`;
+  fileStatus.textContent = `${name} · ${detail}`;
   document.title = `${name} — Dotwright`;
 }
 
@@ -456,9 +482,7 @@ function updateRecovery() {
   const ok = writeRecovery({ text: editor.text, fileName, savedText });
   if (ok) {
     recoveryWarning.textContent = '';
-    recoveryStatus.textContent = `Recovery copy updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
   } else if (!recoveryWarning.textContent) {
-    recoveryStatus.textContent = '';
     recoveryWarning.textContent =
       'Warning: the recovery copy in this browser could not be updated. Save a BRF file to keep your work.';
   }
@@ -569,7 +593,6 @@ function discard() {
   revealedAt = null;
   clearTimeout(recoveryTimer);
   clearRecovery();
-  recoveryStatus.textContent = '';
   render();
   textarea.focus();
   say('New, empty document.');
@@ -581,6 +604,40 @@ function openHelp() {
   currentKeys.textContent = describeDotKeys(editor.dotKeys);
   help.showModal();
 }
+
+// ---- Settings -------------------------------------------------------------
+
+function setEchoCells(on: boolean) {
+  echoCells = on;
+  prefs.echoCells = on;
+  echoCellsInput.checked = on;
+  savePrefs(prefs);
+}
+
+function setShadowDots(on: boolean) {
+  prefs.shadowDots = on;
+  showEmptyDots.checked = on;
+  savePrefs(prefs);
+  render();
+}
+
+function openSettings() {
+  showEmptyDots.checked = prefs.shadowDots;
+  echoCellsInput.checked = echoCells;
+  settingsKeys.textContent = describeDotKeys(editor.dotKeys);
+  settingsDialog.showModal();
+}
+
+showEmptyDots.addEventListener('change', () => setShadowDots(showEmptyDots.checked));
+echoCellsInput.addEventListener('change', () => setEchoCells(echoCellsInput.checked));
+byId('show-settings').addEventListener('click', openSettings);
+byId('settings-change-keys').addEventListener('click', () => {
+  settingsDialog.close();
+  openKeysDialog();
+});
+settingsDialog.addEventListener('close', () => {
+  if (!keysDialog.open) textarea.focus();
+});
 
 function openKeysDialog() {
   if (help.open) help.close();
@@ -665,7 +722,7 @@ byId('goto-cancel').addEventListener('click', () => gotoDialog.close());
 gotoDialog.addEventListener('close', () => gotoReturn.focus());
 
 window.addEventListener('keydown', (e) => {
-  if (help.open || keysDialog.open || saveDialog.open || gotoDialog.open) return;
+  if (help.open || keysDialog.open || saveDialog.open || gotoDialog.open || settingsDialog.open) return;
   const mod = e.ctrlKey || e.metaKey;
   if (e.altKey && !mod) {
     const commands: Record<string, () => void> = {
@@ -679,7 +736,7 @@ window.addEventListener('keydown', (e) => {
       },
       KeyG: openGoTo,
       KeyK: () => {
-        echoCells = !echoCells;
+        setEchoCells(!echoCells);
         say(echoCells ? 'Announcing entered cells.' : 'Not announcing entered cells.');
       },
       KeyH: openHelp,
@@ -721,7 +778,11 @@ window.addEventListener('pagehide', updateRecovery);
 
 async function start() {
   fileStatus.textContent = 'Loading the braille translator…';
-  await Promise.all([document.fonts.load(`${FONT_SIZE}px 'Dotwright Braille'`), initLouis()]);
+  await Promise.all([
+    document.fonts.load(`${FONT_SIZE}px 'Dotwright Braille'`),
+    document.fonts.load(`${FONT_SIZE}px 'Dotwright Braille Shadows'`),
+    initLouis(),
+  ]);
   measureCell();
   editor.dotKeys = loadDotKeys();
 

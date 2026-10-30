@@ -14,6 +14,10 @@ async function chord(page, ch) {
   for (const k of keys) await page.keyboard.up(k);
 }
 const type = async (page, s) => { for (const ch of s) await chord(page, ch); };
+// Line start and end keys for the platform the tests run on.
+const LINE_START = process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home';
+const LINE_END = process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End';
+const lastSaid = (page) => page.evaluate(() => [...document.querySelectorAll('#announcements div')].map((d) => d.textContent).filter(Boolean).at(-1) ?? '');
 const announced = (page) => page.evaluate(() => [...document.querySelectorAll('#announcements div')].map((d) => d.textContent).join(' | '));
 let failures = 0;
 const check = (name, ok, detail = '') => { if (!ok) failures++; console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${name}${ok ? '' : ' :: ' + detail}`); };
@@ -28,6 +32,7 @@ for (const browserType of [chromium, webkit]) {
   await page.waitForFunction(() => !document.querySelector('#editor').disabled);
   const ta = page.locator('#editor');
 
+  check('empty dot positions shown by default', (await page.locator('.dot-shadows').count()) === 1);
   await type(page, 'and');
   check('chords enter Braille ASCII', (await ta.inputValue()) === 'and', await ta.inputValue());
   check('unfinished word is not flagged', (await page.locator('.mark').count()) === 0);
@@ -36,45 +41,56 @@ for (const browserType of [chromium, webkit]) {
   await type(page, ' ');
   await page.waitForTimeout(80);
   check('completed uncontracted word is flagged', (await page.locator('.mark.differs').count()) === 1);
-  check('space announces issue', (await announced(page)).includes('possible contraction issue'), await announced(page));
+  check('space announces issue', (await announced(page)).includes('contraction error'), await announced(page));
   check('print interlining shows learner reading', (await page.locator('.print').first().textContent()) === 'and');
 
   await type(page, '& ! cat4 ');
   check('contracted words not flagged', (await page.locator('.mark').count()) === 1, String(await page.locator('.mark').count()));
 
-  await page.keyboard.press(browserType === webkit ? 'Meta+ArrowLeft' : 'Home');
+  await page.keyboard.press(LINE_START);
   await page.keyboard.press('Alt+KeyW');
   await page.waitForTimeout(80);
-  check('Alt+W speaks word feedback', (await announced(page)).includes('Possible contraction issue'), await announced(page));
+  check('Alt+W speaks word feedback', (await announced(page)).includes('Contraction error.'), await announced(page));
   await page.keyboard.press('Alt+KeyR');
   await page.waitForTimeout(80);
-  check('Alt+R reveals reference', (await announced(page)).includes('Reference: ampersand'), await announced(page));
+  check('Alt+R reveals reference', (await announced(page)).includes('Correct form: ampersand'), await announced(page));
   check('reveal leaves braille unchanged', (await ta.inputValue()).startsWith('and & '));
-  check('reference shown in panel', (await page.locator('#word-details').textContent()).includes('&'));
+  check('correct form shown by the word', (await page.locator('#word-popover').textContent()).includes('&'));
   await page.keyboard.press('Escape');
 
-  // The same with the mouse: click the flagged word, then Show reference.
+  // The same with the mouse: click the flagged word, then Show correct form.
   const box = await ta.boundingBox();
   await page.mouse.click(box.x + 40, box.y + 42);
-  const panel = page.locator('#word-details');
-  check('clicked word shows a Show reference button', await panel.getByRole('button', { name: 'Show reference' }).isVisible());
-  await panel.getByRole('button', { name: 'Show reference' }).click();
-  check('Show reference reveals the reference', (await panel.textContent()).includes('&') && await panel.getByRole('button', { name: 'Hide reference' }).isVisible());
+  const popover = page.locator('#word-popover');
+  const showButton = popover.locator('button', { hasText: 'Show correct form' });
+  check('clicked word shows Contraction error and a Show correct form button',
+    (await popover.textContent()).includes('Contraction error') && await showButton.isVisible());
+  await showButton.click();
+  check('Show correct form reveals it', (await popover.textContent()).includes('&') && await popover.locator('button', { hasText: 'Hide' }).isVisible());
   check('Show reference leaves braille unchanged and returns to the document',
     (await ta.inputValue()).startsWith('and & ') && await page.evaluate(() => document.activeElement.id === 'editor'));
-  await panel.getByRole('button', { name: 'Hide reference' }).click();
-  check('Hide reference hides it', await panel.getByRole('button', { name: 'Show reference' }).isVisible());
-  await page.keyboard.press(browserType === webkit ? 'Meta+ArrowLeft' : 'Home');
+  await popover.locator('button', { hasText: 'Hide' }).click();
+  check('Hide hides it', await showButton.isVisible());
+
+  // Arrowing onto and off a word with an error.
+  await page.keyboard.press(LINE_START);
+  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(80);
+  check('leaving an error word says so', (await announced(page)).includes('out of contraction error'), await announced(page));
+  await page.keyboard.press('ArrowLeft');
+  await page.waitForTimeout(80);
+  check('arriving on an error word says so', (await lastSaid(page)) === 'contraction error', await announced(page));
+  await page.keyboard.press(LINE_START);
 
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowRight');
   check('typing letters does nothing', await (async () => { await page.keyboard.press('q'); return !(await ta.inputValue()).includes('q'); })());
   await page.keyboard.press('Alt+KeyT');
-  check('feedback off hides print and marks', (await page.locator('.print, .mark').count()) === 0 && await page.locator('#word-panel').isHidden());
+  check('feedback off hides print, marks and the popover', (await page.locator('.print, .mark').count()) === 0 && await page.locator('#word-popover').isHidden());
   await page.keyboard.press('Alt+KeyT');
 
   // Wrapping: a long paragraph must break only at spaces, within 40 cells.
-  await page.keyboard.press(browserType === webkit ? 'Meta+ArrowRight' : 'End');
+  await page.keyboard.press(LINE_END);
   for (let i = 0; i < 6; i++) await type(page, '!c!c!c ');
   const lines = (await ta.inputValue()).split('\n');
   check('lines wrap at 40 cells', lines.length > 1 && lines.every((l) => l.trimEnd().length <= 40), JSON.stringify(lines));
@@ -126,14 +142,14 @@ for (const browserType of [chromium, webkit]) {
   await page.keyboard.press('q');
   check('print view refuses typing', (await pv.inputValue()) === 'and and the cat.\nthe');
   await page.keyboard.press('ArrowUp');
-  await page.keyboard.press(browserType === webkit ? 'Meta+ArrowLeft' : 'Home');
+  await page.keyboard.press(LINE_START);
   for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowRight');
   const caret = () => page.evaluate(() => document.querySelector('#editor').selectionStart);
   check('braille caret follows print caret', (await caret()) === 4, String(await caret()));
   check('focus stays in print view', await page.evaluate(() => document.activeElement.id === 'print-view'));
   await page.keyboard.press('Alt+KeyW');
   await page.waitForTimeout(80);
-  check('Alt+W works from the print view', (await announced(page)).includes('and. Matches'), await announced(page));
+  check('Alt+W works from the print view', (await announced(page)).includes('and. No contraction error'), await announced(page));
   await page.keyboard.press('Shift+Tab');
   check('back in the document at the same word', (await caret()) === 4 && await page.evaluate(() => document.activeElement.id === 'editor'));
   await page.keyboard.press('Alt+KeyT');

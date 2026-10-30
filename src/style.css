@@ -3,39 +3,54 @@
   src: url('./fonts/dotwright-braille.woff2') format('woff2');
   font-display: block;
 }
+@font-face {
+  font-family: 'Dotwright Braille Shadows';
+  src: url('./fonts/dotwright-braille-shadows.woff2') format('woff2');
+  font-display: block;
+}
 
 :root {
-  --bg: #f6f4ef;
+  --bg: #f6f6f3;
   --surface: #ffffff;
-  --text: #1d1f23;
-  --muted: #5d6169;
-  --rule: #d9d5cc;
-  --accent: #2f5bd3;
-  --dots: #1d1f23;
-  --print: #3d4250;
-  --issue: #b4540a;
-  --unreadable: #8a2be2;
-  --current: #e8eefc;
-  --selection: #c7d6fb;
-  --warn-bg: #fff1e0;
+  --text: #17181c;
+  --muted: #6b6f78;
+  --faint: #a2a5ad;
+  --rule: #e3e3de;
+  --hover: #efefeb;
+  --accent: #3b5bdb;
+  --accent-soft: #e5ebff;
+  --on-accent: #ffffff;
+  --dots: #17181c;
+  --dot-shadow: #d6d6d0;
+  --issue: #d9480f;
+  --unreadable: #7048e8;
+  --current: #eef2ff;
+  --selection: #cdd8ff;
+  --warn-bg: #fff4e6;
+  --shadow: 0 1px 2px rgb(20 20 30 / 4%), 0 8px 28px rgb(20 20 30 / 6%);
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #15171b;
-    --surface: #1e2127;
-    --text: #e9e7e2;
-    --muted: #a3a7b0;
-    --rule: #383c45;
-    --accent: #8aa8ff;
-    --dots: #f1efe9;
-    --print: #c9ccd4;
-    --issue: #f0a35e;
-    --unreadable: #c79bff;
-    --current: #263049;
-    --selection: #34467a;
+    --bg: #111215;
+    --surface: #1a1b1f;
+    --text: #ececef;
+    --muted: #9a9ea8;
+    --faint: #6a6e78;
+    --rule: #2b2d33;
+    --hover: #24262c;
+    --accent: #8ea2ff;
+    --accent-soft: #252b4d;
+    --on-accent: #111215;
+    --dots: #f1f0ec;
+    --dot-shadow: #3a3c43;
+    --issue: #ff8f5a;
+    --unreadable: #b197fc;
+    --current: #20253d;
+    --selection: #34407a;
     --warn-bg: #3a2a16;
+    --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 28px rgb(0 0 0 / 30%);
     color-scheme: dark;
   }
 }
@@ -46,99 +61,161 @@
 
 body {
   margin: 0;
-  padding: 24px 16px 48px;
+  padding: 28px 16px 64px;
   background: var(--bg);
   color: var(--text);
-  font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
-.masthead {
+/* --cell is set from a measurement in main.ts. */
+:root {
+  --pad: 28px;
+  --gutter: 64px;
+  --sheet-width: calc(41 * var(--cell, 18px) + 2 * var(--pad) + var(--gutter) + 2px);
+}
+
+.app {
+  width: min(100%, var(--sheet-width));
+  margin: 0 auto;
+}
+
+/* ---- Top bar ---- */
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 20px;
+}
+.brand {
   display: flex;
   align-items: baseline;
-  gap: 12px;
-  max-width: 1100px;
-  margin: 0 auto 16px;
+  gap: 10px;
+  margin-right: auto;
 }
-.masthead h1 {
+.brand h1 {
   margin: 0;
-  font-size: 24px;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 .tagline {
   margin: 0;
   color: var(--muted);
+  font-size: 14px;
 }
-
 .toolbar,
-.file-status,
-main,
-.recovery {
-  max-width: 1100px;
-  margin-inline: auto;
+.toolbar-end {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.toolbar-end {
+  padding-left: 12px;
+  border-left: 1px solid var(--rule);
 }
 
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
 button {
   font: inherit;
-  padding: 6px 14px;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: var(--surface);
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   color: var(--text);
   cursor: pointer;
 }
-button[aria-pressed='true'] {
+button:hover {
+  background: var(--hover);
+}
+button.primary {
   background: var(--accent);
-  border-color: var(--accent);
-  color: var(--surface);
+  color: var(--on-accent);
+  font-weight: 550;
 }
-button:focus-visible {
-  outline: 3px solid var(--accent);
+button.primary:hover {
+  filter: brightness(1.08);
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-/* The document's focus ring goes around the whole page, not just the text area. */
-#editor:focus-visible {
-  outline: none;
+
+.help-link {
+  padding: 6px 12px;
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
 }
-.sheet:focus-within {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
+.help-link:hover {
+  background: var(--hover);
 }
-#help-title:focus {
-  outline: none;
+
+/* Feedback on/off switch. */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
+.switch-track {
+  position: relative;
+  width: 30px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--rule);
+  transition: background 0.15s;
+}
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+  transition: transform 0.15s;
+}
+.switch[aria-checked='true'] .switch-track {
+  background: var(--accent);
+}
+.switch[aria-checked='true'] .switch-thumb {
+  transform: translateX(12px);
+}
+
+/* ---- Document ---- */
 
 .file-status {
-  margin-top: 12px;
+  margin: 0 0 10px 2px;
   color: var(--muted);
-}
-
-.editor-label {
-  display: block;
-  font-weight: 600;
-  margin: 8px 0;
+  font-size: 13px;
 }
 
 .sheet-scroll {
   overflow-x: auto;
   padding: 4px;
+  margin: -4px;
 }
 
-/* --cell is set from a measurement in main.ts. */
-:root {
-  --pad: 24px;
-  --sheet-width: calc(41 * var(--cell, 18px) + 2 * var(--pad) + 96px + 2px);
-}
 .sheet {
   position: relative;
   width: max-content;
-  padding-right: 96px;
+  padding-right: var(--gutter);
   background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: 8px;
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+/* The focus ring goes around the whole page, not just the text area. */
+.sheet:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow);
+}
+#editor:focus-visible {
+  outline: none;
 }
 
 #editor {
@@ -146,7 +223,7 @@ button:focus-visible {
   z-index: 1;
   display: block;
   width: calc(41 * var(--cell, 18px) + 2 * var(--pad));
-  padding: 0 var(--pad);
+  padding: 12px var(--pad);
   border: 0;
   resize: none;
   overflow: hidden;
@@ -164,131 +241,197 @@ button:focus-visible {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 18px;
 }
 .overlay > * {
   position: absolute;
   white-space: nowrap;
 }
+/* Unraised dot positions, drawn pale behind the raised dots; must match #editor's text layout. */
+.overlay > .dot-shadows {
+  left: 0;
+  top: 0;
+  padding: 12px var(--pad);
+  color: var(--dot-shadow);
+  font: 30px/84px 'Dotwright Braille Shadows', monospace;
+  white-space: pre;
+}
 .print {
-  color: var(--print);
+  color: var(--muted);
 }
 .print.differs {
   color: var(--issue);
-  font-weight: 600;
+  font-weight: 550;
 }
 .print.unreadable {
   color: var(--unreadable);
-  font-weight: 600;
+  font-weight: 550;
 }
+/* Wavy underline for a contraction error; dotted for braille that can't be read. */
 .mark {
-  height: 0;
-  border-bottom: 3px solid var(--issue);
+  height: 6px;
+  background: var(--issue);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='6'%3E%3Cpath d='M0 3 Q2 0.5 4 3 T8 3' fill='none' stroke='black' stroke-width='1.6'/%3E%3C/svg%3E")
+    repeat-x;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='6'%3E%3Cpath d='M0 3 Q2 0.5 4 3 T8 3' fill='none' stroke='black' stroke-width='1.6'/%3E%3C/svg%3E")
+    repeat-x;
 }
 .mark.unreadable {
-  border-bottom-style: dotted;
-  border-color: var(--unreadable);
+  height: 0;
+  background: none;
+  -webkit-mask: none;
+  mask: none;
+  border-bottom: 2px dotted var(--unreadable);
 }
 .current-word {
   background: var(--current);
-  border-radius: 4px;
+  border-radius: 6px;
 }
 .page-break {
-  left: 0;
-  right: 0;
-  border-top: 1px dashed var(--rule);
+  left: 16px;
+  right: 16px;
+  border-top: 1px solid var(--rule);
 }
 .page-label {
-  right: 12px;
-  color: var(--muted);
-  font-size: 12px;
+  right: 16px;
+  color: var(--faint);
+  font-size: 11px;
+  letter-spacing: 0.02em;
 }
 
-.word-panel {
-  max-width: var(--sheet-width);
-  margin-top: 16px;
-  padding: 12px 16px;
+/* Small card in the gap under a word with a contraction error. */
+.word-popover {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 2px 2px 10px;
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: 8px;
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
 }
-.word-panel h2 {
-  margin: 0 0 8px;
-  font-size: 16px;
+.word-popover[hidden] {
+  display: none;
 }
-.word-panel dl {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 4px 16px;
-  margin: 0;
+.word-popover .label {
+  color: var(--issue);
+  font-weight: 550;
 }
-.word-panel dt {
+.word-popover .label.unreadable {
+  margin-right: 8px;
+  color: var(--unreadable);
+}
+.word-popover .correct {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 8px;
+  border-left: 1px solid var(--rule);
   color: var(--muted);
 }
-.word-panel dd {
-  margin: 0;
+.word-popover button {
+  padding: 1px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 550;
 }
-.panel-button {
-  padding: 2px 10px;
-  font-size: 14px;
+.word-popover .braille {
+  font: 20px/18px 'Dotwright Braille', monospace;
+  color: var(--dots);
 }
-.braille + .panel-button,
-.braille ~ .panel-button {
-  margin-left: 12px;
-}
-.braille {
-  font: 26px/1.2 'Dotwright Braille', monospace;
-  margin-right: 8px;
+.word-popover .ascii {
+  font-family: ui-monospace, monospace;
 }
 
-.recovery {
-  margin-top: 24px;
-  color: var(--muted);
-  font-size: 14px;
+.recovery-warning {
+  margin-top: 16px;
+  padding: 10px 14px;
+  background: var(--warn-bg);
+  border-radius: 10px;
 }
 .recovery-warning:empty {
   display: none;
 }
-.recovery-warning {
-  padding: 8px 12px;
-  background: var(--warn-bg);
-  color: var(--text);
-  border-radius: 6px;
-}
+
+/* ---- Dialogs ---- */
 
 dialog {
-  max-width: 640px;
+  width: min(560px, calc(100% - 32px));
+  padding: 24px 28px;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--rule);
-  border-radius: 8px;
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 22%);
 }
-kbd {
-  font: 13px ui-monospace, monospace;
-  padding: 1px 5px;
-  border: 1px solid var(--rule);
-  border-radius: 4px;
+dialog::backdrop {
+  background: rgb(15 15 20 / 35%);
+  backdrop-filter: blur(2px);
+}
+dialog h2 {
+  margin: 0 0 16px;
+  font-size: 19px;
+}
+dialog h3 {
+  margin: 20px 0 6px;
+  font-size: 15px;
+}
+dialog ul {
+  padding-left: 20px;
+}
+dialog li {
+  margin: 4px 0;
+}
+#help-title:focus {
+  outline: none;
+}
+#help {
+  width: min(640px, calc(100% - 32px));
+}
+.dialog-actions,
+form p:last-child {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 20px 0 0;
 }
 
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
+dialog label {
+  display: block;
+  font-weight: 550;
 }
-
-.help-link {
-  align-self: center;
-  margin-left: 4px;
-  color: var(--accent);
+dialog label.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  font-weight: 400;
 }
-.help-link:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 2px;
+.check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+  color: var(--muted);
+}
+.setting-row button {
+  background: var(--hover);
 }
 
 #dot-keys,
@@ -296,13 +439,14 @@ kbd {
 #goto-line,
 #goto-cell {
   display: block;
-  margin: 6px 0;
-  padding: 6px 8px;
-  font: 18px ui-monospace, monospace;
+  width: 100%;
+  margin: 6px 0 12px;
+  padding: 8px 10px;
+  font: 17px ui-monospace, monospace;
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--rule);
-  border-radius: 6px;
+  border-radius: 8px;
 }
 #dot-keys {
   letter-spacing: 0.2em;
@@ -313,6 +457,22 @@ kbd {
   margin: 0;
 }
 
+kbd {
+  font: 12px ui-monospace, monospace;
+  padding: 1px 5px;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 /* Hidden from view but keeps its lines, so screen readers can move by line. */
 #print-view {
   white-space: pre;

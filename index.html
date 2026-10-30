@@ -6,57 +6,69 @@
     <title>Dotwright</title>
   </head>
   <body>
-    <header class="masthead">
-      <h1>Dotwright</h1>
-      <p class="tagline">Learn by Brailling</p>
-    </header>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <h1>Dotwright</h1>
+          <p class="tagline">Learn by Brailling</p>
+        </div>
+        <div class="toolbar" role="group" aria-label="Document">
+          <button type="button" id="new-doc">New</button>
+          <button type="button" id="open-doc">Open…</button>
+          <button type="button" id="save-doc">Save</button>
+          <button type="button" id="save-as-doc" hidden>Save as…</button>
+        </div>
+        <div class="toolbar-end">
+          <button type="button" id="toggle-feedback" class="switch" role="switch" aria-checked="true">
+            Feedback<span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+          </button>
+          <button type="button" id="show-settings">Settings</button>
+          <a href="#help" id="show-help" class="help-link">Instructions</a>
+        </div>
+      </header>
 
-    <div class="toolbar" role="group" aria-label="Document">
-      <button type="button" id="new-doc">New document</button>
-      <button type="button" id="open-doc">Open BRF…</button>
-      <button type="button" id="save-doc">Save BRF</button>
-      <button type="button" id="save-as-doc" hidden>Save BRF as…</button>
-      <button type="button" id="toggle-feedback" aria-pressed="true">Feedback</button>
-      <a href="#help" id="show-help" class="help-link">Instructions</a>
+      <main>
+        <p id="file-status" class="file-status"></p>
+        <label for="editor" class="visually-hidden">Braille document</label>
+        <div class="sheet-scroll">
+          <div class="sheet" id="sheet">
+            <div class="overlay" id="overlay" aria-hidden="true"></div>
+            <textarea
+              id="editor"
+              wrap="off"
+              spellcheck="false"
+              autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
+              disabled
+            ></textarea>
+            <!-- Mouse access to the correct form; keyboard users have Alt+R. -->
+            <div id="word-popover" class="word-popover" aria-hidden="true" hidden></div>
+          </div>
+        </div>
+        <textarea
+          id="print-view"
+          class="visually-hidden"
+          wrap="off"
+          aria-readonly="true"
+          aria-label="Print interlining"
+          spellcheck="false"
+        ></textarea>
+      </main>
+
+      <p id="recovery-warning" class="recovery-warning" role="alert"></p>
     </div>
 
-    <p id="file-status" class="file-status" role="status"></p>
-
-    <main>
-      <label for="editor" class="editor-label">Braille document</label>
-      <div class="sheet-scroll">
-        <div class="sheet" id="sheet">
-          <div class="overlay" id="overlay" aria-hidden="true"></div>
-          <textarea
-            id="editor"
-            wrap="off"
-            spellcheck="false"
-            autocomplete="off"
-            autocapitalize="off"
-            autocorrect="off"
-            disabled
-          ></textarea>
-        </div>
-      </div>
-      <textarea
-        id="print-view"
-        class="visually-hidden"
-        wrap="off"
-        aria-readonly="true"
-        aria-label="Print interlining"
-        spellcheck="false"
-      ></textarea>
-
-      <section id="word-panel" class="word-panel" aria-labelledby="word-panel-title">
-        <h2 id="word-panel-title">Word at cursor</h2>
-        <dl id="word-details"></dl>
-      </section>
-    </main>
-
-    <footer class="recovery">
-      <p id="recovery-status" class="recovery-status"></p>
-      <p id="recovery-warning" class="recovery-warning" role="alert"></p>
-    </footer>
+    <dialog id="settings-dialog" aria-labelledby="settings-title">
+      <h2 id="settings-title">Settings</h2>
+      <label class="check"><input type="checkbox" id="show-empty-dots" /> Show empty dot positions</label>
+      <label class="check"><input type="checkbox" id="echo-cells" /> Announce each cell as it is entered</label>
+      <p class="setting-row">
+        <span id="settings-keys"></span>
+        <button type="button" id="settings-change-keys">Change braille keys…</button>
+      </p>
+      <form method="dialog" class="dialog-actions"><button class="primary">Done</button></form>
+    </dialog>
 
     <dialog id="help" aria-labelledby="help-title">
       <h2 id="help-title" tabindex="-1" autofocus>Instructions</h2>
@@ -77,9 +89,10 @@
       <p><button type="button" id="change-keys">Change braille keys</button></p>
       <h3>Feedback</h3>
       <ul>
+        <li>Words with a contraction error are underlined with a wavy line. Moving onto one announces "contraction error", and moving off it announces "out of contraction error".</li>
         <li><kbd>Alt</kbd>+<kbd>W</kbd>: print and contraction status of the word at the cursor.</li>
-        <li><kbd>Alt</kbd>+<kbd>R</kbd>: reveal the reference braille for the word at the cursor. <kbd>Escape</kbd> hides it. The Show reference button under the document does the same.</li>
-        <li><kbd>Alt</kbd>+<kbd>N</kbd>: next word with an issue; <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>: previous.</li>
+        <li><kbd>Alt</kbd>+<kbd>R</kbd>: show the correct form of the word at the cursor. <kbd>Escape</kbd> hides it. With a mouse, click the word and use Show correct form.</li>
+        <li><kbd>Alt</kbd>+<kbd>N</kbd>: next contraction error; <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>: previous.</li>
         <li>
           <kbd>Tab</kbd> from the document goes to the print view: a read-only copy of the print
           interlining, line for line. Moving through it moves the braille cursor to the same word,
@@ -94,7 +107,7 @@
           <kbd>Alt</kbd>+<kbd>G</kbd>: go to a line and cell. Lines are counted from the start of
           the document, so line 26 is the first line of page 2.
         </li>
-        <li><kbd>Alt</kbd>+<kbd>K</kbd>: turn announcing each entered cell on or off.</li>
+        <li><kbd>Alt</kbd>+<kbd>K</kbd>: turn announcing each entered cell on or off. This and showing empty dot positions are also in Settings.</li>
         <li><kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>O</kbd>: open a BRF file. <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd>: save a BRF file.</li>
         <li><kbd>Alt</kbd>+<kbd>H</kbd>: these instructions.</li>
       </ul>
@@ -104,7 +117,7 @@
         is refreshed, but it stays only in this browser on this device and is lost if browser data
         is cleared. Your braille never leaves your device.
       </p>
-      <form method="dialog"><button>Close</button></form>
+      <form method="dialog" class="dialog-actions"><button class="primary">Close</button></form>
     </dialog>
 
     <dialog id="goto-dialog" aria-labelledby="goto-title">
@@ -116,7 +129,7 @@
         <input id="goto-cell" inputmode="numeric" autocomplete="off" aria-describedby="goto-error" />
         <p id="goto-error" class="field-error" role="alert"></p>
         <p>
-          <button type="submit">Go</button>
+          <button type="submit" class="primary">Go</button>
           <button type="button" id="goto-cancel">Cancel</button>
         </p>
       </form>
@@ -129,7 +142,7 @@
         <input id="file-name" autocomplete="off" spellcheck="false" aria-describedby="file-name-error" />
         <p id="file-name-error" class="field-error" role="alert"></p>
         <p>
-          <button type="submit">Save</button>
+          <button type="submit" class="primary">Save</button>
           <button type="button" id="save-cancel">Cancel</button>
         </p>
       </form>
@@ -148,7 +161,7 @@
         />
         <p id="dot-keys-error" class="field-error" role="alert"></p>
         <p>
-          <button type="submit">Save</button>
+          <button type="submit" class="primary">Save</button>
           <button type="button" id="keys-default">Use f d s j k l</button>
           <button type="button" id="keys-cancel">Cancel</button>
         </p>
