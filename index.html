@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Dotwright</title>
   </head>
   <body>
@@ -59,10 +59,40 @@
       <p id="recovery-warning" class="recovery-warning" role="alert"></p>
     </div>
 
+    <!--
+      Writes cells by tapping or clicking dots. It's on the same side of the
+      page as the sheet: as read on the front, mirrored on the back as on a slate.
+    -->
+    <section id="slate" class="slate" aria-label="Slate" hidden>
+      <div class="slate-body">
+        <button type="button" id="slate-prev" class="slate-move" aria-label="Previous cell"></button>
+        <div class="slate-cell" role="group" aria-label="Dots">
+          <button type="button" class="slate-dot" data-dot="1" aria-pressed="false" aria-label="Dot 1"></button>
+          <button type="button" class="slate-dot" data-dot="2" aria-pressed="false" aria-label="Dot 2"></button>
+          <button type="button" class="slate-dot" data-dot="3" aria-pressed="false" aria-label="Dot 3"></button>
+          <button type="button" class="slate-dot" data-dot="4" aria-pressed="false" aria-label="Dot 4"></button>
+          <button type="button" class="slate-dot" data-dot="5" aria-pressed="false" aria-label="Dot 5"></button>
+          <button type="button" class="slate-dot" data-dot="6" aria-pressed="false" aria-label="Dot 6"></button>
+        </div>
+        <button type="button" id="slate-next" class="slate-move" aria-label="Next cell"></button>
+      </div>
+      <div class="slate-bar">
+        <button type="button" id="slate-newline" aria-label="New line"></button>
+        <div class="side-switch" role="group" aria-label="Side of the page">
+          <button type="button" id="side-front" aria-pressed="true" aria-label="Front"></button>
+          <button type="button" id="side-back" aria-pressed="false" aria-label="Back"></button>
+        </div>
+        <p id="slate-position" class="slate-position"></p>
+      </div>
+    </section>
+
     <dialog id="settings-dialog" aria-labelledby="settings-title">
       <h2 id="settings-title">Settings</h2>
       <label class="check"><input type="checkbox" id="show-empty-dots" /> Show empty dot positions</label>
       <label class="check"><input type="checkbox" id="echo-cells" /> Announce each cell as it is entered</label>
+      <h3>Slate</h3>
+      <label class="check"><input type="checkbox" id="show-slate" /> Show the slate</label>
+      <label class="check"><input type="checkbox" id="slate-clicks" /> Click when a dot is punched</label>
       <p class="setting-row">
         <span id="settings-keys"></span>
         <button type="button" id="settings-change-keys">Change braille keys…</button>
@@ -80,6 +110,24 @@
         <li>Lines are 40 cells. A word that would pass cell 40 moves to a new line; pages are 25 lines.</li>
         <li>Arrow keys, Backspace, Delete, Shift selection, cut, copy and paste work as usual.</li>
         <li><kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> undoes; add <kbd>Shift</kbd> to redo.</li>
+      </ul>
+      <h3>Slate</h3>
+      <p>
+        The slate at the bottom of the screen writes one cell at a time, at the cursor. Tap or click
+        a dot to punch it, and again to take it out. Next moves on to the next cell; on an empty
+        cell, it writes a space. Previous cell goes back a cell so you can change it. New line
+        starts the next line. Tap or click the page to move the cursor.
+      </p>
+      <p>
+        The page has two sides, and the slate is always on the same side as the page. The front
+        is the reading side: cells are as you read them, and print and feedback are shown. The back
+        is the side you write on with a real slate: the page and the slate are mirrored, so dots 1,
+        2 and 3 are on the right, and the line runs from right to left. Dots on the back are pits,
+        and there's no feedback until you turn the page over.
+      </p>
+      <ul>
+        <li>The Front and Back buttons under the slate turn the page over. <kbd>Alt</kbd>+<kbd>F</kbd> also turns it over.</li>
+        <li>The keyboard keeps working alongside the slate. Settings can hide the slate.</li>
       </ul>
       <h3>Braille keys</h3>
       <p>

@@ -6,9 +6,15 @@ export interface Prefs {
   shadowDots: boolean;
   /** Announce each cell as it is entered. */
   echoCells: boolean;
+  /** Show the slate, for writing cells by tapping or clicking dots. */
+  showSlate: boolean;
+  /** Play a click when a dot is punched on the slate. */
+  slateClicks: boolean;
+  /** The side of the page last shown: the front as read, or the back as written on a slate. */
+  side: 'front' | 'back';
 }
 
-const DEFAULTS: Prefs = { shadowDots: true, echoCells: true };
+const DEFAULTS: Prefs = { shadowDots: true, echoCells: true, showSlate: true, slateClicks: true, side: 'front' };
 
 export function loadPrefs(): Prefs {
   try {

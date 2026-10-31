@@ -1,4 +1,4 @@
-import { canonicalChar, maskToChar } from './brailleAscii';
+import { canonicalChar, charToMask, maskToChar } from './brailleAscii';
 import { keepCaretOnKeyboardFocus } from './focusCaret';
 import { DEFAULT_DOT_KEYS, typedChar } from './keymap';
 import { hardWrap, wordAt, wordsOf, type Word } from './layout';
@@ -54,6 +54,11 @@ export class BrailleEditor {
   private editing = false;
   private editAnchor = 0;
   private lastSelection = '';
+  /**
+   * Offset of the cell the slate is writing, which is just before the caret.
+   * Punching more dots changes this cell instead of adding another.
+   */
+  private slateOffset: number | null = null;
 
   constructor(
     readonly el: HTMLTextAreaElement,
@@ -88,6 +93,7 @@ export class BrailleEditor {
     this.redoStack = [];
     this.lastKind = null;
     this.editing = false;
+    this.slateOffset = null;
     this.apply(hardWrap(text, true).text, 0, 0);
     this.events.change('load');
   }
@@ -103,6 +109,100 @@ export class BrailleEditor {
     this.el.setSelectionRange(offset, offset);
     this.lastSelection = `${offset}:${offset}`;
     this.editing = false;
+    this.events.select();
+  }
+
+  // ---- Slate ----------------------------------------------------------------
+  //
+  // The slate writes one cell at a time at the caret. The first dot punched
+  // adds a cell; more dots change that cell until the learner moves on.
+
+  /**
+   * The offset of the cell the slate is writing, or null if its next dot
+   * starts a new cell at the caret. The cell may be a space (a blank cell the
+   * learner went back to), but never a line break.
+   */
+  slateCell(): number | null {
+    const at = this.slateOffset;
+    const { selectionStart, selectionEnd } = this.el;
+    if (at === null || selectionStart !== at + 1 || selectionEnd !== at + 1) return null;
+    const ch = this.text[at];
+    return ch === undefined || ch === '\n' ? null : at;
+  }
+
+  /** Dots of the cell the slate is writing, as a mask; 0 if it's blank or a new cell. */
+  slateMask(): number {
+    const at = this.slateCell();
+    return at === null ? 0 : Math.max(0, charToMask(this.text[at]));
+  }
+
+  /**
+   * Writes the slate's cell with these dots. Taking out its last dot removes
+   * the cell, so the next dot starts it again in the same place.
+   */
+  slateWrite(mask: number): void {
+    this.collapseSelection();
+    const at = this.slateCell();
+    if (mask === 0) {
+      if (at !== null && this.text[at] !== ' ') {
+        this.el.setSelectionRange(at, at + 1);
+        this.insert('', 'delete');
+      }
+      this.slateOffset = null;
+      return;
+    }
+    if (at !== null) this.el.setSelectionRange(at, at + 1);
+    const ch = maskToChar(mask);
+    this.insert(ch, 'cell');
+    this.slateOffset = this.el.selectionStart - 1;
+    this.events.cell(ch);
+  }
+
+  /** Moves on to the next cell. Moving on from an empty cell writes a space. */
+  slateNext(): void {
+    if (this.slateCell() !== null) {
+      this.slateOffset = null;
+      this.events.select();
+    } else {
+      this.collapseSelection();
+      this.insert(' ', 'space');
+    }
+  }
+
+  /** Goes back to the cell before the caret, so the slate can change it. */
+  slateBack(): void {
+    this.collapseSelection();
+    // Where the slate is now: its cell, or the new cell at the caret.
+    const at = this.slateCell() ?? this.el.selectionStart;
+    if (at === 0) return;
+    if (this.text[at - 1] === '\n') {
+      // To the end of the previous line, ready to add to it.
+      this.slateOffset = null;
+      this.placeCaretFromSlate(at - 1);
+    } else {
+      this.slateOffset = at - 1;
+      this.placeCaretFromSlate(at);
+    }
+  }
+
+  slateNewLine(): void {
+    this.collapseSelection();
+    this.slateOffset = null;
+    this.insert('\n', 'newline');
+  }
+
+  private collapseSelection(): void {
+    const { selectionStart, selectionEnd } = this.el;
+    if (selectionStart !== selectionEnd) this.el.setSelectionRange(selectionEnd, selectionEnd);
+  }
+
+  private placeCaretFromSlate(offset: number): void {
+    this.el.setSelectionRange(offset, offset);
+    this.lastSelection = `${offset}:${offset}`;
+    if (this.editing) {
+      const words = this.words();
+      if (wordAt(words, this.editAnchor) !== wordAt(words, offset)) this.editing = false;
+    }
     this.events.select();
   }
 
@@ -123,6 +223,7 @@ export class BrailleEditor {
     to.push(this.snapshot());
     this.lastKind = null;
     this.editing = false;
+    this.slateOffset = null;
     this.apply(snap.text, snap.start, snap.end);
     this.events.change(action);
   }
@@ -198,10 +299,12 @@ export class BrailleEditor {
   }
 
   private insert(str: string, kind: EditKind): void {
-    if (!this.exec(kind, 'insertText', str)) {
-      this.el.setRangeText(str, this.el.selectionStart, this.el.selectionEnd, 'end');
-      this.reconcile();
-    }
+    // The native command edits whatever has focus, so only use it when the
+    // document does; slate taps can arrive while focus is elsewhere.
+    if (document.activeElement !== this.el) this.beginEdit(kind);
+    else if (this.exec(kind, str ? 'insertText' : 'delete', str || undefined)) return;
+    this.el.setRangeText(str, this.el.selectionStart, this.el.selectionEnd, 'end');
+    this.reconcile();
   }
 
   /**

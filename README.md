@@ -17,6 +17,7 @@ Dotwright never changes your braille. There's no "fix" button: you make every co
 ## Features
 
 - **Six-key entry** with F D S J K L and the space bar, or any six keys you choose, to suit your keyboard layout.
+- **A slate** at the bottom of the screen, for writing by tapping dots on a phone or clicking with a mouse or trackpad. The page has two sides, and the slate is always on the same side as the page. On the front, cells are entered as read, with print and feedback. On the back, the page and the slate are mirrored, as on a real slate: dots 1, 2 and 3 are on the right, lines run right to left, and dots are pits rather than bumps, with no feedback until the page is turned over. The slate can be hidden in Settings, and the keyboard always works alongside it.
 - **Screen reader support** for VoiceOver on macOS and NVDA on Windows. Moving through the braille announces each cell as its Braille ASCII character. Moving onto a word with an error says "contraction error", and keyboard commands give the print and status of the word at the cursor.
 - **A print view** for screen reader users: a hidden, read-only copy of the print, line for line. Moving through it moves the braille cursor to the same word.
 - **BRF files**: open existing ones and save your work, in the standard 40-cell, 25-line page format. Your braille is saved exactly as you wrote it, mistakes included.
@@ -31,7 +32,10 @@ Press Alt+H in Dotwright for the full list of keyboard commands.
 - Feedback is only as good as liblouis's reading of braille back into print. It can misread some entries, so now and then a word may be marked as a contraction error when it isn't.
 - Words are checked one at a time. Capitalized and grade 1 passages are followed across words, but other multi-word rules, such as emphasis passages, aren't yet.
 - Contraction checking is always against fully contracted UEB. There are no settings for learning a subset of contractions.
-- Desktop and laptop browsers only: Safari and Chrome are tested, Firefox isn't. NVDA support hasn't been tested with NVDA itself yet.
+- Safari and Chrome on a computer, and Safari on iPhone, are tested; Firefox and Android aren't. NVDA support hasn't been tested with NVDA itself yet.
+- The slate is designed for sighted use. Its buttons work with a keyboard and screen reader, but there's no direct-touch slate for VoiceOver on iPhone.
+- On a phone, a 40-cell line is wider than the screen, so the page scrolls sideways to follow the cursor.
+- A cell punched without mirroring often reads as some other braille that liblouis accepts, so it may show odd print rather than a contraction error.
 
 ## Development
 
@@ -48,6 +52,8 @@ npm run dev
 ```
 
 Then open http://localhost:5173. The development server reloads as you change code. It doesn't register the offline service worker.
+
+To try it on a phone, serve it on every network interface with `npm run dev -- --host`, and open the address it prints. Over Tailscale, the machine's MagicDNS name (ending in `.ts.net`) works too.
 
 ### Building
 
@@ -91,7 +97,7 @@ The browser tests drive the real app in Chromium and WebKit, Safari's engine. In
 npx playwright install chromium webkit
 ```
 
-The smoke test covers six-key typing, feedback, the print view, go-to, custom keys, saving, recovery and discarding. Run it against the development server:
+The smoke test covers six-key typing, feedback, the print view, go-to, custom keys, saving, recovery, discarding and the slate, including on an emulated iPhone. Run it against the development server:
 
 ```sh
 npm run dev          # in one terminal
@@ -112,6 +118,7 @@ None of these replace testing with VoiceOver and NVDA themselves.
 
 - **Editor** (`src/editor.ts`): a native text area holding the document as Braille ASCII, line for line like a BRF file. Screen readers read it natively, so each cell is announced as its Braille ASCII character. The braille font draws those characters as dots. Lines are at most 40 cells, and pages are 25 lines.
 - **Six-key entry**: chords of F D S J K L by default, with the space bar for space. Learners can choose other keys with Alt+B (`src/keymap.ts`).
+- **Slate**: the editor's slate methods write the cell at the caret through the same edit path as the keyboard, so undo, line wrapping and feedback work the same. The back of the page is the same text area, mirrored with a CSS transform, and the slate's layout follows the side shown.
 - **Feedback** (`src/feedback.ts`): each word is read back to print with liblouis and translated forward again to fully contracted UEB. A word that differs is flagged as a possible issue, and a word that can't be read is reported as such. Capitalized and grade 1 passages are tracked across words.
 - **Print view**: a hidden, read-only text field after the document holding the print line for line. Its cursor and the braille cursor follow each other by word.
 - **Files** (`src/brf.ts`, `src/files.ts`): BRF files are opened and saved locally. Chrome and Edge save in place; Safari saves as a download.

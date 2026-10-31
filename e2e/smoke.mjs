@@ -207,7 +207,94 @@ for (const browserType of [chromium, webkit]) {
   await page.click('#keys-default');
   check('no instructions on the page', !(await page.locator('body > :not(dialog)').allInnerTexts()).join(' ').match(/press|substitute|F D S/i));
 
+  // Slate: tap dots to write the cell at the cursor; keyboard focus stays in the document.
+  await page.click('#new-doc');
+  const punch = async (...dots) => { for (const d of dots) await page.click(`.slate-dot[data-dot="${d}"]`); };
+  const pressed = () => page.evaluate(() => [...document.querySelectorAll('.slate-dot[aria-pressed="true"]')].map((b) => b.dataset.dot).join(''));
+  check('slate shown by default', await page.locator('#slate').isVisible());
+  await punch(1, 4);
+  check('punching writes one cell', (await ta.inputValue()) === 'c' && (await pressed()) === '14', `${await ta.inputValue()} ${await pressed()}`);
+  check('slate keeps focus in the document', await page.evaluate(() => document.activeElement.id === 'editor'));
+  await punch(4);
+  check('punching again takes a dot out', (await ta.inputValue()) === 'a', await ta.inputValue());
+  await page.click('#slate-next');
+  check('Next moves on to an empty cell', (await pressed()) === '' && (await ta.inputValue()) === 'a');
+  await punch(1, 2);
+  await page.click('#slate-next');
+  await page.click('#slate-next');
+  check('Next on an empty cell writes a space', (await ta.inputValue()) === 'ab ', JSON.stringify(await ta.inputValue()));
+  check('finished word gets feedback', (await page.locator('.print').count()) === 1);
+  await page.click('#slate-prev');
+  await page.click('#slate-prev');
+  check('Previous goes to the cell before', (await pressed()) === '12', await pressed());
+  await punch(2, 4);
+  check('Previous lets a cell be changed', (await ta.inputValue()) === 'ac ', JSON.stringify(await ta.inputValue()));
+  await page.click('#slate-next');
+  await page.keyboard.down('f'); await page.keyboard.up('f');
+  check('keyboard works alongside the slate', (await ta.inputValue()) === 'aca ', JSON.stringify(await ta.inputValue()));
+  await page.keyboard.press(LINE_END);
+  await page.click('#slate-newline');
+  await punch(2, 3, 4, 6);
+  check('New line starts a line', (await ta.inputValue()) === 'aca \n!', JSON.stringify(await ta.inputValue()));
+  check('slate position shown', (await page.locator('#slate-position').textContent()).startsWith('Line 2'));
+  await page.keyboard.press('Meta+KeyZ');
+  await page.keyboard.press('Control+KeyZ');
+  check('undo takes back slate cells', !(await ta.inputValue()).endsWith('!'), JSON.stringify(await ta.inputValue()));
+
+  const dotColumn = () => page.evaluate(() => getComputedStyle(document.querySelector('.slate-dot[data-dot="1"]')).gridColumnStart);
+  check('slate reads normally on the front', (await dotColumn()) === '1', await dotColumn());
+  await page.click('#side-back');
+  await page.waitForTimeout(300);
+  check('Back shows the page mirrored and without print',
+    await page.locator('#sheet.back').count() === 1 && (await page.locator('.print, .mark').count()) === 0);
+  check('slate is mirrored on the back', (await dotColumn()) === '2', await dotColumn());
+  check('screen readers hear that the dots are mirrored', (await page.getAttribute('.slate-cell', 'aria-label')) === 'Dots, mirrored');
+  check('side switch shows the back', (await page.getAttribute('#side-back', 'aria-pressed')) === 'true');
+  await page.reload();
+  await page.waitForFunction(() => !document.querySelector('#editor').disabled);
+  check('side is remembered', await page.locator('#sheet.back').count() === 1);
+  await page.keyboard.press('Alt+KeyW');
+  await page.waitForTimeout(80);
+  check('word feedback explains the back', (await lastSaid(page)).includes('back of the page'), await lastSaid(page));
+  await page.keyboard.press('Alt+KeyF');
+  await page.waitForTimeout(300);
+  check('Alt+F flips back to the front', await page.locator('#sheet.back').count() === 0 && (await page.locator('.print').count()) > 0);
+
+  await page.click('#show-settings');
+  await page.click('#show-slate');
+  await page.keyboard.press('Escape');
+  check('Settings hide the slate', await page.locator('#slate').isHidden());
+  await page.reload();
+  await page.waitForFunction(() => !document.querySelector('#editor').disabled);
+  check('hidden slate stays hidden', await page.locator('#slate').isHidden());
+  await page.click('#show-settings');
+  await page.click('#show-slate');
+  await page.keyboard.press('Escape');
+
   check('no page errors', errors.length === 0, errors.join('; '));
+  await browser.close();
+}
+
+// The slate on a phone: tapping the page mustn't bring up the on-screen keyboard.
+{
+  console.log('webkit, iPhone');
+  const browser = await webkit.launch();
+  const { devices } = await import('playwright');
+  const context = await browser.newContext(devices['iPhone 14']);
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(URL);
+  await page.waitForFunction(() => !document.querySelector('#editor').disabled);
+  check('no on-screen keyboard for the page', (await page.getAttribute('#editor', 'inputmode')) === 'none');
+  for (const d of [2, 3, 4, 6]) await page.tap(`.slate-dot[data-dot="${d}"]`);
+  await page.tap('#slate-next');
+  await page.tap('#slate-next');
+  check('tapping the slate writes braille', (await page.locator('#editor').inputValue()) === '! ');
+  const slateTop = (await page.locator('#slate').boundingBox()).y;
+  const cursor = await page.locator('.slate-cursor').boundingBox();
+  check('cursor is above the slate', cursor.y + cursor.height <= slateTop, `${cursor.y} ${slateTop}`);
+  check('no page errors on the phone', errors.length === 0, errors.join('; '));
   await browser.close();
 }
 process.exit(failures ? 1 : 0);

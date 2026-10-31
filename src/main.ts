@@ -9,6 +9,8 @@ import { LINES_PER_PAGE, lineNumberOf, offsetOf, positionOf, wordAt, type Word }
 import { DEFAULT_DOT_KEYS, describeDotKeys, loadDotKeys, parseDotKeys, saveDotKeys } from './keymap';
 import { keepCaretOnKeyboardFocus } from './focusCaret';
 import { initLouis } from './louis';
+import { playClick } from './click';
+import { SLATE_ICONS } from './slateIcons';
 import { loadPrefs, savePrefs } from './prefs';
 import { clearRecovery, loadRecovery, writeRecovery } from './recovery';
 
@@ -39,19 +41,46 @@ const dotKeysInput = byId<HTMLInputElement>('dot-keys');
 const dotKeysError = byId('dot-keys-error');
 const settingsDialog = byId<HTMLDialogElement>('settings-dialog');
 const showEmptyDots = byId<HTMLInputElement>('show-empty-dots');
+const showSlateInput = byId<HTMLInputElement>('show-slate');
+const slateClicksInput = byId<HTMLInputElement>('slate-clicks');
 const echoCellsInput = byId<HTMLInputElement>('echo-cells');
 const settingsKeys = byId('settings-keys');
 
-// Must match #editor in style.css.
-const FONT_SIZE = 30;
-const LINE = 84;
-const PAD = 28;
-const TOP = 12;
-const GLYPH_TOP = TOP + (LINE - FONT_SIZE * 1.04) / 2;
+/**
+ * The page's geometry, smaller on narrow screens such as phones. Set on the
+ * page as CSS variables, which #editor in style.css uses.
+ */
+const narrowScreen = matchMedia('(max-width: 640px)');
+let FONT_SIZE = 30;
+let LINE = 84;
+let PAD = 28;
+let TOP = 12;
+let GLYPH_TOP = 0;
+
+function setGeometry() {
+  const narrow = narrowScreen.matches;
+  FONT_SIZE = narrow ? 22 : 30;
+  LINE = narrow ? 64 : 84;
+  PAD = narrow ? 16 : 28;
+  TOP = narrow ? 10 : 12;
+  GLYPH_TOP = TOP + (LINE - FONT_SIZE * 1.04) / 2;
+  const style = document.documentElement.style;
+  style.setProperty('--font', `${FONT_SIZE}px`);
+  style.setProperty('--line', `${LINE}px`);
+  style.setProperty('--pad', `${PAD}px`);
+  style.setProperty('--top', `${TOP}px`);
+  style.setProperty('--gutter', narrow ? '44px' : '64px');
+}
+setGeometry();
 
 let cell = FONT_SIZE * 0.6;
 let feedbackOn = true;
 const prefs = loadPrefs();
+/** Which side of the page is shown. The back is the braille as punched on a slate, without feedback. */
+let side: 'front' | 'back' = prefs.side === 'back' ? 'back' : 'front';
+const feedbackShown = () => feedbackOn && side === 'front';
+const feedbackHiddenMessage = () =>
+  side === 'back' ? 'This is the back of the page. Alt+F flips it to show feedback.' : 'Feedback is off. Alt+T turns it on.';
 let echoCells = prefs.echoCells;
 let fileName: string | null = null;
 let fileHandle: FileHandle | null = null;
@@ -131,7 +160,7 @@ function statusText(f: WordFeedback): string {
 const issueName = (f: WordFeedback) => (f.status === 'unreadable' ? "can't read" : 'contraction error');
 
 function errorWordAtCaret(): number | null {
-  if (!feedbackOn) return null;
+  if (!feedbackShown()) return null;
   const state = stateAtCaret();
   return state && isIssue(state.feedback) ? state.word.start : null;
 }
@@ -155,7 +184,7 @@ function announceCompletedWord(kind: 'space' | 'newline') {
   const word = editor.words().find((w) => w.end === caret - 1);
   const parts: string[] = [];
   if (echoCells) parts.push(kind === 'space' ? 'space' : 'new line');
-  if (feedbackOn && word) {
+  if (feedbackShown() && word) {
     const f = checkDocument(editor.text).get(word.start)!;
     if (isIssue(f)) parts.push(issueName(f));
   }
@@ -168,7 +197,7 @@ function dropRevealIfMoved() {
 }
 
 function speakWordFeedback() {
-  if (!feedbackOn) return say('Feedback is off. Alt+T turns it on.');
+  if (!feedbackShown()) return say(feedbackHiddenMessage());
   const state = stateAtCaret();
   if (!state) return say('No word at the cursor.');
   const f = state.feedback;
@@ -177,7 +206,7 @@ function speakWordFeedback() {
 }
 
 function revealReference() {
-  if (!feedbackOn) return say('Feedback is off. Alt+T turns it on.');
+  if (!feedbackShown()) return say(feedbackHiddenMessage());
   const state = stateAtCaret();
   if (!state) return say('No word at the cursor.');
   const f = state.feedback;
@@ -200,7 +229,7 @@ function hideReference() {
 }
 
 function moveToIssue(direction: 1 | -1) {
-  if (!feedbackOn) return say('Feedback is off. Alt+T turns it on.');
+  if (!feedbackShown()) return say(feedbackHiddenMessage());
   const issues = wordStates().filter((s) => isIssue(s.feedback));
   if (!issues.length) return say('No contraction errors.');
   const caret = editor.selectionStart;
@@ -226,7 +255,7 @@ function moveToIssue(direction: 1 | -1) {
 function toggleFeedback() {
   feedbackOn = !feedbackOn;
   feedbackButton.setAttribute('aria-checked', String(feedbackOn));
-  if (!feedbackOn && document.activeElement === printView) textarea.focus();
+  if (!feedbackShown() && document.activeElement === printView) textarea.focus();
   revealedAt = null;
   errorWordStart = errorWordAtCaret();
   render();
@@ -290,7 +319,17 @@ function render() {
       `${FONT_SIZE * 1.04}px`;
   }
 
-  if (feedbackOn) {
+  // Where the slate writes: the cell it's punching, or the next cell.
+  if (prefs.showSlate) {
+    const writing = editor.slateCell();
+    const at = writing ?? editor.selectionStart;
+    const line = lineOf(at);
+    const col = at - lineStarts[line];
+    place(`slate-cursor${writing === null ? '' : ' writing'}`, PAD + col * cell - 2, line * LINE + GLYPH_TOP - 4, cell + 4).style.height =
+      `${FONT_SIZE * 1.04 + 8}px`;
+  }
+
+  if (feedbackShown()) {
     let lastLine = -1;
     let lastRight = 0;
     for (const { word, feedback } of states) {
@@ -315,6 +354,7 @@ function render() {
   renderPopover(caretState, caretState ? lineOf(caretState.word.start) : 0, lineStarts);
   renderPrintView(states, lineOf, lineStarts.length);
   renderFileStatus();
+  renderSlate();
 }
 
 // ---- Print view -----------------------------------------------------------
@@ -332,8 +372,8 @@ interface PrintSpan {
 let printSpans: PrintSpan[] = [];
 
 function renderPrintView(states: WordState[], lineOf: (offset: number) => number, lineCount: number) {
-  printView.hidden = !feedbackOn;
-  if (!feedbackOn) return;
+  printView.hidden = !feedbackShown();
+  if (!feedbackShown()) return;
   let text = '';
   let line = 0;
   let lineHasWord = false;
@@ -416,7 +456,7 @@ keepCaretOnKeyboardFocus(printView, () => {
  */
 function renderPopover(state: WordState | null, line: number, lineStarts: number[]) {
   const f = state?.feedback;
-  popover.hidden = !feedbackOn || !state || !f || !isIssue(f);
+  popover.hidden = !feedbackShown() || !state || !f || !isIssue(f);
   if (popover.hidden || !state || !f) return;
   const parts: Node[] = [];
   const label = document.createElement('span');
@@ -455,6 +495,162 @@ function popoverButton(label: string, action: () => void): HTMLButtonElement {
   button.addEventListener('mousedown', (e) => e.preventDefault());
   button.addEventListener('click', action);
   return button;
+}
+
+// ---- Slate ----------------------------------------------------------------
+
+const slate = byId('slate');
+const slateDots = [...slate.querySelectorAll<HTMLButtonElement>('.slate-dot')];
+const slateCell = slate.querySelector<HTMLElement>('.slate-cell')!;
+const slatePosition = byId('slate-position');
+const sideFront = byId('side-front');
+const sideBack = byId('side-back');
+const sheet = byId('sheet');
+const coarsePointer = matchMedia('(pointer: coarse)');
+
+function renderSlate() {
+  if (!prefs.showSlate) return;
+  const mask = editor.slateMask();
+  for (const button of slateDots) {
+    const dot = Number(button.dataset.dot);
+    button.setAttribute('aria-pressed', String(Boolean(mask & (1 << (dot - 1)))));
+  }
+  const { line, cell: at } = positionOf(editor.text, editor.slateCell() ?? editor.selectionStart);
+  const lineText = document.createElement('span');
+  lineText.textContent = `Line ${line}`;
+  const cellText = document.createElement('span');
+  cellText.textContent = `Cell ${at} of 40`;
+  slatePosition.replaceChildren(lineText, cellText);
+}
+
+const sheetScroll = sheet.parentElement!;
+
+/**
+ * Keeps the cell being written in view, above the slate. Where the page is
+ * wider than the screen, the cursor is brought back to the middle when it
+ * nears an edge, so the cells just written stay in view too.
+ */
+function revealSlateCursor() {
+  const cursor = overlay.querySelector('.slate-cursor');
+  if (!cursor) return;
+  cursor.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  const box = cursor.getBoundingClientRect();
+  const view = sheetScroll.getBoundingClientRect();
+  const margin = view.width * 0.2;
+  if (box.left < view.left + margin || box.right > view.right - margin) {
+    sheetScroll.scrollLeft += (box.left + box.right) / 2 - (view.left + view.right) / 2;
+  }
+}
+
+function afterSlateAction() {
+  render();
+  revealSlateCursor();
+}
+
+for (const button of slateDots) {
+  button.addEventListener('click', () => {
+    const bit = 1 << (Number(button.dataset.dot) - 1);
+    const mask = editor.slateMask() ^ bit;
+    if (prefs.slateClicks) playClick(Boolean(mask & bit));
+    editor.slateWrite(mask);
+    afterSlateAction();
+  });
+}
+
+for (const [id, icon] of Object.entries(SLATE_ICONS)) byId(id).innerHTML = icon;
+
+/**
+ * Slides the slate's cell in from the way the stylus moved, so moving on
+ * feels like moving along the slate. `x` is +1 for rightward on screen, -1
+ * for leftward; `y` is 1 for down to a new line.
+ */
+function slideCell(x: number, y = 0) {
+  if (reducedMotion.matches) return;
+  slateCell.animate(
+    [{ transform: `translate(${x * 18}px, ${y * 18}px)`, opacity: 0.35 }, { transform: 'none', opacity: 1 }],
+    { duration: 180, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' },
+  );
+}
+
+/** Which way the line runs on screen: right on the front, left on the back. */
+const forward = () => (side === 'back' ? -1 : 1);
+
+const slateActions: [string, () => void][] = [
+  ['slate-next', () => (editor.slateNext(), slideCell(forward()))],
+  ['slate-prev', () => (editor.slateBack(), slideCell(-forward()))],
+  ['slate-newline', () => (editor.slateNewLine(), slideCell(0, 1))],
+];
+for (const [id, action] of slateActions) {
+  byId(id).addEventListener('click', () => {
+    action();
+    afterSlateAction();
+  });
+}
+
+// Tapping the slate leaves focus, and the caret, in the document.
+for (const button of slate.querySelectorAll('button')) {
+  button.addEventListener('mousedown', (e) => e.preventDefault());
+}
+
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let turning = false;
+
+/** Turns the page over, squeezing it edge-on and opening it out again on the other side. */
+function flip() {
+  if (turning) return;
+  if (reducedMotion.matches) return turnOver();
+  turning = true;
+  sheet.classList.add('turning');
+  setTimeout(() => {
+    turnOver();
+    sheet.classList.remove('turning');
+    turning = false;
+  }, 170);
+}
+
+function turnOver() {
+  side = side === 'front' ? 'back' : 'front';
+  prefs.side = side;
+  savePrefs(prefs);
+  if (side === 'back' && document.activeElement === printView) textarea.focus();
+  revealedAt = null;
+  errorWordStart = errorWordAtCaret();
+  showSide();
+  render();
+  // Once the page has opened out, so the cursor is measured where it ends up.
+  if (reducedMotion.matches) revealSlateCursor();
+  else setTimeout(revealSlateCursor, 200);
+  say(side === 'back' ? 'Back of the page, mirrored as on a slate. No feedback until you turn it over.' : 'Front of the page.');
+}
+
+/** Shows the page and the slate on the current side. */
+function showSide() {
+  const back = side === 'back';
+  sheet.classList.toggle('back', back);
+  slate.classList.toggle('back', back);
+  // So screen-reader users know which way round the dots are.
+  slateCell.setAttribute('aria-label', back ? 'Dots, mirrored' : 'Dots');
+  sideFront.setAttribute('aria-pressed', String(!back));
+  sideBack.setAttribute('aria-pressed', String(back));
+}
+
+sideFront.addEventListener('click', () => side === 'back' && flip());
+sideBack.addEventListener('click', () => side === 'front' && flip());
+
+/** Keeps the space the slate covers clear at the bottom of the page. */
+new ResizeObserver(() => {
+  document.documentElement.style.setProperty('--slate-height', `${slate.hidden ? 0 : slate.offsetHeight}px`);
+}).observe(slate);
+
+function applySlatePrefs() {
+  slate.hidden = !prefs.showSlate;
+  document.body.classList.toggle('has-slate', prefs.showSlate);
+  // With the slate on a touch screen, tapping the page moves the cursor
+  // without bringing up the on-screen keyboard. A hardware keyboard still works.
+  if (prefs.showSlate && coarsePointer.matches) textarea.setAttribute('inputmode', 'none');
+  else textarea.removeAttribute('inputmode');
+  if (!prefs.showSlate) document.documentElement.style.setProperty('--slate-height', '0px');
+  render();
 }
 
 // ---- Files and recovery ---------------------------------------------------
@@ -621,7 +817,20 @@ function setShadowDots(on: boolean) {
   render();
 }
 
+const slateSettings: [HTMLInputElement, 'showSlate' | 'slateClicks'][] = [
+  [showSlateInput, 'showSlate'],
+  [slateClicksInput, 'slateClicks'],
+];
+for (const [input, key] of slateSettings) {
+  input.addEventListener('change', () => {
+    prefs[key] = input.checked;
+    savePrefs(prefs);
+    applySlatePrefs();
+  });
+}
+
 function openSettings() {
+  for (const [input, key] of slateSettings) input.checked = prefs[key];
   showEmptyDots.checked = prefs.shadowDots;
   echoCellsInput.checked = echoCells;
   settingsKeys.textContent = describeDotKeys(editor.dotKeys);
@@ -730,6 +939,7 @@ window.addEventListener('keydown', (e) => {
       KeyR: revealReference,
       KeyN: () => moveToIssue(e.shiftKey ? -1 : 1),
       KeyT: toggleFeedback,
+      KeyF: flip,
       KeyL: () => {
         const { page, line, cell } = positionOf(editor.text, editor.selectionStart);
         say(`Page ${page}, line ${line}, cell ${cell}.`);
@@ -773,6 +983,11 @@ textarea.addEventListener('scroll', () => {
   overlay.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`;
 });
 window.addEventListener('pagehide', updateRecovery);
+narrowScreen.addEventListener('change', () => {
+  setGeometry();
+  measureCell();
+  render();
+});
 
 // ---- Start ----------------------------------------------------------------
 
@@ -784,6 +999,8 @@ async function start() {
     initLouis(),
   ]);
   measureCell();
+  showSide();
+  applySlatePrefs();
   editor.dotKeys = loadDotKeys();
 
   const copy = loadRecovery();

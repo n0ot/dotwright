@@ -53,4 +53,7 @@ export default defineConfig({
   // Relative URLs, so the built site works from any folder of a website.
   base: './',
   plugins: [serviceWorker()],
+  // `npm run dev -- --host` serves on every network interface; this also lets
+  // phones reach it by Tailscale MagicDNS name, not just by IP address.
+  server: { allowedHosts: ['.ts.net'] },
 });
