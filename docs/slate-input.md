@@ -167,3 +167,17 @@ The slate's buttons show pictures instead of words; screen readers still hear th
 ## Slate on the back only (October 2026)
 
 On the front, the slate's cell was laid out as read, and she began entering cells as if it were the slate, which defeats the point of practising mirroring. The slate now appears only on the back of the page. On the front, only the Front / Back buttons are shown; writing there is by keyboard. Slate input therefore always means mirrored input.
+
+## The slate works like a keyboard (October 2026)
+
+The page is a text field, not paper, so writing each dot straight into the page and moving the "stylus" back over cells to change them was confusing, and there was no way to delete a space. The slate now works like a braille keyboard:
+
+- Tapping dots sets them on the slate only. A faint preview shows them in the box on the page where they'll be written.
+- Next cell writes the dots at the cursor, clears the slate and slides it along. With no dots set, it writes a space.
+- Erase (a backspace key, pointing right, the way the stylus goes back on the back of the page) clears dots set but not yet written; otherwise it erases the cell before the cursor, spaces and line breaks included.
+- New line writes any dots set, then starts a line.
+- The cursor is moved by tapping the page, as before.
+
+### Delete
+
+The erase button became a Delete key, modelled on the one on an iPhone keyboard: a grey key with the delete symbol, mirrored to point right. It's called Delete on Apple devices and Backspace on Windows and Linux. Holding it down keeps deleting, faster after a moment. Screen readers hear just the cell deleted ("d", "space", "new line"), as with the real key; Dotwright has to say it, because a screen reader on a button doesn't follow changes in the text field.

@@ -65,7 +65,7 @@
     -->
     <section id="slate" class="slate" aria-label="Slate" hidden>
       <div class="slate-body">
-        <button type="button" id="slate-prev" class="slate-move" aria-label="Previous cell"></button>
+        <button type="button" id="slate-delete" class="slate-move key" aria-label="Delete"></button>
         <div class="slate-cell" role="group" aria-label="Dots, mirrored">
           <button type="button" class="slate-dot" data-dot="1" aria-pressed="false" aria-label="Dot 1"></button>
           <button type="button" class="slate-dot" data-dot="2" aria-pressed="false" aria-label="Dot 2"></button>
@@ -121,10 +121,11 @@
       </p>
       <p>
         On the back, a slate under the page writes one cell at a time, at the cursor. It's mirrored
-        too: dots 1, 2 and 3 are on the right. Tap or click a dot to punch it, and again to take it
-        out. Next cell moves on to the next cell; on an empty cell, it writes a space. Previous cell
-        goes back a cell so you can change it. New line starts the next line. Tap or click the page
-        to move the cursor.
+        too: dots 1, 2 and 3 are on the right. Tap or click dots to set them, and again to take them
+        out. Next cell writes the dots at the cursor and moves on; with no dots set, it writes a
+        space. <span class="delete-key-name">Delete</span> erases the cell before the cursor, like
+        the key on a keyboard, and can be held down; if you've set dots but not written them yet,
+        it clears those first. New line starts the next line. Tap or click the page to move the cursor.
       </p>
       <p>The keyboard works on both sides. Settings can hide the slate and the Front and Back buttons.</p>
       <h3>Braille keys</h3>

@@ -28,6 +28,9 @@
   --selection: #cdd8ff;
   --warn-bg: #fff4e6;
   --paper-back: #f7f5ef;
+  --key: #c5cad2;
+  --key-pressed: #e8eaee;
+  --key-edge: rgb(0 0 0 / 30%);
   /* Dots pressed into the back of the page. */
   --engraved: #8f8b80;
   --engraved-light: rgb(255 255 255 / 95%);
@@ -56,6 +59,9 @@
     --selection: #34407a;
     --warn-bg: #3a2a16;
     --paper-back: #1d1c19;
+    --key: #46464b;
+    --key-pressed: #6b6b70;
+    --key-edge: rgb(0 0 0 / 60%);
     --engraved: #7d796f;
     --engraved-light: rgb(255 255 255 / 10%);
     --engraved-dark: rgb(0 0 0 / 75%);
@@ -336,6 +342,12 @@ input:focus-visible {
 .caret-spot {
   visibility: hidden;
 }
+/* The dots set on the slate, shown faintly where they'll be written. */
+.overlay > .slate-preview {
+  color: var(--accent);
+  opacity: 0.6;
+  font: var(--font) / var(--line) 'Dotwright Braille', monospace;
+}
 .slate-cursor.writing {
   opacity: 1;
   background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
@@ -535,9 +547,17 @@ body.has-slate {
   grid-area: 1 / 1;
   justify-self: end;
 }
-#slate-prev {
+#slate-delete {
   grid-area: 1 / 3;
   justify-self: start;
+}
+/* Delete looks like a phone keyboard's special keys: a darker grey key with a slight edge. */
+.slate-move.key {
+  background: var(--key);
+  box-shadow: 0 1px 0 var(--key-edge);
+}
+.slate-move.key:active {
+  background: var(--key-pressed);
 }
 /* The icons are drawn as read, so they're mirrored like everything else here. */
 .slate-move svg,
@@ -618,6 +638,9 @@ body.has-slate {
 @media (hover: none) {
   .slate-move:hover {
     background: var(--hover);
+  }
+  .slate-move.key:hover {
+    background: var(--key);
   }
   #slate-next:hover {
     background: var(--accent);

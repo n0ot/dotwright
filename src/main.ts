@@ -1,6 +1,6 @@
 import './style.css';
 import { Announcer } from './announcer';
-import { spell, spokenName } from './brailleAscii';
+import { maskToChar, spell, spokenName } from './brailleAscii';
 import { formatBrf, parseBrf } from './brf';
 import { BrailleEditor } from './editor';
 import { checkDocument, type WordFeedback } from './feedback';
@@ -319,15 +319,16 @@ function render() {
       `${FONT_SIZE * 1.04}px`;
   }
 
-  // Where the slate writes: the cell it's punching, or the next cell. On the
-  // front, an invisible marker at the caret, for scrolling it into view.
+  // Where the slate writes next, with a faint preview of the dots set on it.
+  // On the front, an invisible marker at the caret, for scrolling it into view.
   {
-    const writing = side === 'back' ? editor.slateCell() : null;
-    const at = writing ?? editor.selectionStart;
+    const at = editor.selectionStart;
     const line = lineOf(at);
     const col = at - lineStarts[line];
-    const className = prefs.showSlate && side === 'back' ? `slate-cursor${writing === null ? '' : ' writing'}` : 'caret-spot';
-    place(className, PAD + col * cell - 2, line * LINE + GLYPH_TOP - 4, cell + 4).style.height = `${FONT_SIZE * 1.04 + 8}px`;
+    const onSlate = prefs.showSlate && side === 'back';
+    place(onSlate ? `slate-cursor${slateMask ? ' writing' : ''}` : 'caret-spot', PAD + col * cell - 2, line * LINE + GLYPH_TOP - 4, cell + 4)
+      .style.height = `${FONT_SIZE * 1.04 + 8}px`;
+    if (onSlate && slateMask) place('slate-preview', PAD + col * cell, TOP + line * LINE, undefined, maskToChar(slateMask));
   }
 
   if (feedbackShown()) {
@@ -503,6 +504,8 @@ function popoverButton(label: string, action: () => void): HTMLButtonElement {
 const slate = byId('slate');
 const slateDots = [...slate.querySelectorAll<HTMLButtonElement>('.slate-dot')];
 const slateCell = slate.querySelector<HTMLElement>('.slate-cell')!;
+/** Dots set on the slate and not yet written, as a mask. */
+let slateMask = 0;
 const slatePosition = byId('slate-position');
 const sideFront = byId('side-front');
 const sideBack = byId('side-back');
@@ -511,12 +514,11 @@ const coarsePointer = matchMedia('(pointer: coarse)');
 
 function renderSlate() {
   if (!prefs.showSlate) return;
-  const mask = editor.slateMask();
   for (const button of slateDots) {
     const dot = Number(button.dataset.dot);
-    button.setAttribute('aria-pressed', String(Boolean(mask & (1 << (dot - 1)))));
+    button.setAttribute('aria-pressed', String(Boolean(slateMask & (1 << (dot - 1)))));
   }
-  const { line, cell: at } = positionOf(editor.text, editor.slateCell() ?? editor.selectionStart);
+  const { line, cell: at } = positionOf(editor.text, editor.selectionStart);
   const lineText = document.createElement('span');
   lineText.textContent = `Line ${line}`;
   const cellText = document.createElement('span');
@@ -551,10 +553,9 @@ function afterSlateAction() {
 for (const button of slateDots) {
   button.addEventListener('click', () => {
     const bit = 1 << (Number(button.dataset.dot) - 1);
-    const mask = editor.slateMask() ^ bit;
-    if (prefs.slateClicks) playClick(Boolean(mask & bit));
-    editor.slateWrite(mask);
-    afterSlateAction();
+    slateMask ^= bit;
+    if (prefs.slateClicks) playClick(Boolean(slateMask & bit));
+    render();
   });
 }
 
@@ -573,11 +574,81 @@ function slideCell(x: number, y = 0) {
   );
 }
 
-// The slate is on the back of the page, where lines run right to left.
+/** Writes the dots set on the slate at the caret, and clears the slate. */
+function stamp() {
+  editor.slateWrite(slateMask);
+  slateMask = 0;
+}
+
+/**
+ * The slate's Delete key, like Delete on an iPhone keyboard (Backspace on
+ * Windows and Linux): it erases the cell before the cursor, and says which,
+ * as a screen reader does for the real key. Dots set but not yet written are
+ * cleared first, to start the cell again.
+ */
+function deleteBackward() {
+  if (slateMask) {
+    slateMask = 0;
+    say('Cleared');
+  } else {
+    const erased = editor.text[editor.selectionStart - 1];
+    if (erased === undefined) return;
+    editor.slateDelete();
+    say(erased === '\n' ? 'new line' : spokenName(erased));
+  }
+  if (prefs.slateClicks) playClick(false);
+  slideCell(1);
+  afterSlateAction();
+}
+
+const deleteKey = byId('slate-delete');
+const isApple = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+deleteKey.setAttribute('aria-label', isApple ? 'Delete' : 'Backspace');
+for (const el of document.querySelectorAll('.delete-key-name')) el.textContent = isApple ? 'Delete' : 'Backspace';
+
+// Held down, it keeps deleting, faster after a moment, like the real key.
+// A press is handled on pointerdown; the click that follows is then skipped,
+// so keyboard and screen-reader activation still work through click alone.
+let deleteRepeat = 0;
+let pressedByPointer = false;
+const stopRepeat = () => clearTimeout(deleteRepeat);
+deleteKey.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  pressedByPointer = true;
+  deleteBackward();
+  let delay = 500;
+  const repeat = () => {
+    deleteBackward();
+    delay = Math.max(70, delay * 0.8);
+    deleteRepeat = window.setTimeout(repeat, delay);
+  };
+  deleteRepeat = window.setTimeout(repeat, delay);
+});
+for (const type of ['pointerup', 'pointercancel', 'pointerleave', 'blur'] as const) {
+  deleteKey.addEventListener(type, () => {
+    stopRepeat();
+    // If no click follows (the finger slid off), don't skip a later one.
+    setTimeout(() => (pressedByPointer = false), 400);
+  });
+}
+deleteKey.addEventListener('click', () => {
+  if (pressedByPointer) pressedByPointer = false;
+  else deleteBackward();
+});
+
+// The slate is on the back of the page, where lines run right to left: the
+// stylus moves left to the next cell.
 const slateActions: [string, () => void][] = [
-  ['slate-next', () => (editor.slateNext(), slideCell(-1))],
-  ['slate-prev', () => (editor.slateBack(), slideCell(1))],
-  ['slate-newline', () => (editor.slateNewLine(), slideCell(0, 1))],
+  ['slate-next', () => (stamp(), slideCell(-1))],
+  [
+    'slate-newline',
+    () => {
+      if (slateMask) stamp();
+      editor.slateNewLine();
+      slideCell(0, 1);
+    },
+  ],
 ];
 for (const [id, action] of slateActions) {
   byId(id).addEventListener('click', () => {

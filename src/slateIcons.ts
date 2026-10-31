@@ -35,12 +35,14 @@ function cell(x: number, y: number, w: number, h: number, dots: number[], look: 
 const svg = (body: string) =>
   `<svg viewBox="0 0 40 40" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
 
+/** Writing the cell and moving on: the written cell, and the empty one the stylus moves to. */
 const NEXT = svg(
   cell(1, 7, 13, 26, [1, 2, 4], 'done') + cell(26, 7, 13, 26, [], 'target') + '<path d="M16 20h7.5m-4-4 4 4-4 4"/>',
 );
 
-const PREVIOUS = svg(
-  cell(1, 7, 13, 26, [1, 2, 4], 'target') + cell(26, 7, 13, 26, [], 'faint') + '<path d="M24 20h-7.5m4-4-4 4 4 4"/>',
+/** The delete symbol from a phone keyboard: a tag pointing back, with a cross. */
+const DELETE = svg(
+  '<path d="M14 9h20a3 3 0 0 1 3 3v16a3 3 0 0 1-3 3H14L4 20Z"/>' + '<path d="M20 15.5l9 9m0-9-9 9"/>',
 );
 
 const NEW_LINE = svg(
@@ -83,7 +85,7 @@ const BACK = svg(PAGE_BACK + dotPositions(true).map(pit).join(''));
 
 export const SLATE_ICONS: Record<string, string> = {
   'slate-next': NEXT,
-  'slate-prev': PREVIOUS,
+  'slate-delete': DELETE,
   'slate-newline': NEW_LINE,
   'side-front': FRONT,
   'side-back': BACK,
