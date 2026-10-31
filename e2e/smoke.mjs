@@ -211,7 +211,16 @@ for (const browserType of [chromium, webkit]) {
   await page.click('#new-doc');
   const punch = async (...dots) => { for (const d of dots) await page.click(`.slate-dot[data-dot="${d}"]`); };
   const pressed = () => page.evaluate(() => [...document.querySelectorAll('.slate-dot[aria-pressed="true"]')].map((b) => b.dataset.dot).join(''));
-  check('slate shown by default', await page.locator('#slate').isVisible());
+  check('front shows only the Front and Back buttons',
+    await page.locator('#side-back').isVisible() && await page.locator('.slate-cell').isHidden() && await page.locator('#slate-next').isHidden());
+  check('no slate cursor on the front', (await page.locator('.slate-cursor').count()) === 0);
+  await page.click('#side-back');
+  await page.waitForTimeout(300);
+  check('back shows the slate', await page.locator('.slate-cell').isVisible() && (await page.locator('.slate-cursor').count()) === 1);
+  const dotColumn = () => page.evaluate(() => getComputedStyle(document.querySelector('.slate-dot[data-dot="1"]')).gridColumnStart);
+  check('slate is mirrored', (await dotColumn()) === '2', await dotColumn());
+  check('screen readers hear that the dots are mirrored', (await page.getAttribute('.slate-cell', 'aria-label')) === 'Dots, mirrored');
+  check('Back shows the page mirrored and without print', await page.locator('#sheet.back').count() === 1);
   await punch(1, 4);
   check('punching writes one cell', (await ta.inputValue()) === 'c' && (await pressed()) === '14', `${await ta.inputValue()} ${await pressed()}`);
   check('slate keeps focus in the document', await page.evaluate(() => document.activeElement.id === 'editor'));
@@ -223,7 +232,7 @@ for (const browserType of [chromium, webkit]) {
   await page.click('#slate-next');
   await page.click('#slate-next');
   check('Next on an empty cell writes a space', (await ta.inputValue()) === 'ab ', JSON.stringify(await ta.inputValue()));
-  check('finished word gets feedback', (await page.locator('.print').count()) === 1);
+  check('no feedback on the back', (await page.locator('.print, .mark').count()) === 0);
   await page.click('#slate-prev');
   await page.click('#slate-prev');
   check('Previous goes to the cell before', (await pressed()) === '12', await pressed());
@@ -241,14 +250,6 @@ for (const browserType of [chromium, webkit]) {
   await page.keyboard.press('Control+KeyZ');
   check('undo takes back slate cells', !(await ta.inputValue()).endsWith('!'), JSON.stringify(await ta.inputValue()));
 
-  const dotColumn = () => page.evaluate(() => getComputedStyle(document.querySelector('.slate-dot[data-dot="1"]')).gridColumnStart);
-  check('slate reads normally on the front', (await dotColumn()) === '1', await dotColumn());
-  await page.click('#side-back');
-  await page.waitForTimeout(300);
-  check('Back shows the page mirrored and without print',
-    await page.locator('#sheet.back').count() === 1 && (await page.locator('.print, .mark').count()) === 0);
-  check('slate is mirrored on the back', (await dotColumn()) === '2', await dotColumn());
-  check('screen readers hear that the dots are mirrored', (await page.getAttribute('.slate-cell', 'aria-label')) === 'Dots, mirrored');
   check('side switch shows the back', (await page.getAttribute('#side-back', 'aria-pressed')) === 'true');
   await page.reload();
   await page.waitForFunction(() => !document.querySelector('#editor').disabled);
@@ -258,7 +259,8 @@ for (const browserType of [chromium, webkit]) {
   check('word feedback explains the back', (await lastSaid(page)).includes('back of the page'), await lastSaid(page));
   await page.keyboard.press('Alt+KeyF');
   await page.waitForTimeout(300);
-  check('Alt+F flips back to the front', await page.locator('#sheet.back').count() === 0 && (await page.locator('.print').count()) > 0);
+  check('Alt+F flips back to the front, with feedback on what was written',
+    await page.locator('#sheet.back').count() === 0 && (await page.locator('.print').count()) > 0 && await page.locator('.slate-cell').isHidden());
 
   await page.click('#show-settings');
   await page.click('#show-slate');
@@ -287,6 +289,8 @@ for (const browserType of [chromium, webkit]) {
   await page.goto(URL);
   await page.waitForFunction(() => !document.querySelector('#editor').disabled);
   check('no on-screen keyboard for the page', (await page.getAttribute('#editor', 'inputmode')) === 'none');
+  await page.tap('#side-back');
+  await page.waitForTimeout(300);
   for (const d of [2, 3, 4, 6]) await page.tap(`.slate-dot[data-dot="${d}"]`);
   await page.tap('#slate-next');
   await page.tap('#slate-next');

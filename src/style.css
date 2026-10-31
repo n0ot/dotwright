@@ -28,7 +28,6 @@
   --selection: #cdd8ff;
   --warn-bg: #fff4e6;
   --paper-back: #f7f5ef;
-  --pit: #e9e9e4;
   /* Dots pressed into the back of the page. */
   --engraved: #8f8b80;
   --engraved-light: rgb(255 255 255 / 95%);
@@ -57,7 +56,6 @@
     --selection: #34407a;
     --warn-bg: #3a2a16;
     --paper-back: #1d1c19;
-    --pit: #26272c;
     --engraved: #7d796f;
     --engraved-light: rgb(255 255 255 / 10%);
     --engraved-dark: rgb(0 0 0 / 75%);
@@ -335,6 +333,9 @@ input:focus-visible {
   border-radius: 7px;
   opacity: 0.55;
 }
+.caret-spot {
+  visibility: hidden;
+}
 .slate-cursor.writing {
   opacity: 1;
   background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
@@ -473,19 +474,28 @@ body.has-slate {
   border-radius: 20px;
   box-shadow: inset 0 2px 6px rgb(20 20 30 / 8%);
 }
-/* As read on the front: dots 1 to 3 on the left. Mirrored on the back, as on a slate. */
-.slate-dot[data-dot='1'] { grid-area: 1 / 1; }
-.slate-dot[data-dot='2'] { grid-area: 2 / 1; }
-.slate-dot[data-dot='3'] { grid-area: 3 / 1; }
-.slate-dot[data-dot='4'] { grid-area: 1 / 2; }
-.slate-dot[data-dot='5'] { grid-area: 2 / 2; }
-.slate-dot[data-dot='6'] { grid-area: 3 / 2; }
-.slate.back .slate-dot[data-dot='1'] { grid-area: 1 / 2; }
-.slate.back .slate-dot[data-dot='2'] { grid-area: 2 / 2; }
-.slate.back .slate-dot[data-dot='3'] { grid-area: 3 / 2; }
-.slate.back .slate-dot[data-dot='4'] { grid-area: 1 / 1; }
-.slate.back .slate-dot[data-dot='5'] { grid-area: 2 / 1; }
-.slate.back .slate-dot[data-dot='6'] { grid-area: 3 / 1; }
+/*
+ * The slate is only shown on the back of the page, where it writes as a
+ * real slate does: mirrored, with dots 1 to 3 on the right, punched as pits.
+ * On the front, only the Front / Back switch is shown.
+ */
+.slate:not(.back) .slate-body {
+  display: none;
+}
+.slate:not(.back) #slate-newline,
+.slate:not(.back) .slate-position {
+  visibility: hidden;
+}
+.slate:not(.back) .slate-bar {
+  margin-top: 0;
+}
+
+.slate-dot[data-dot='1'] { grid-area: 1 / 2; }
+.slate-dot[data-dot='2'] { grid-area: 2 / 2; }
+.slate-dot[data-dot='3'] { grid-area: 3 / 2; }
+.slate-dot[data-dot='4'] { grid-area: 1 / 1; }
+.slate-dot[data-dot='5'] { grid-area: 2 / 1; }
+.slate-dot[data-dot='6'] { grid-area: 3 / 1; }
 
 .slate-dot {
   position: relative;
@@ -496,27 +506,16 @@ body.has-slate {
 .slate-dot:hover {
   background: transparent;
 }
-/* An unpunched position: a faint mark on the paper. */
+/* Unpunched positions are shallow rings; punched ones are deep pits. */
 .slate-dot::before {
   content: '';
   position: absolute;
   inset: 22%;
   border-radius: 50%;
-  background: var(--pit);
+  box-shadow: inset 0 1px 2px var(--engraved-dark), 0 1px 0 var(--engraved-light);
   transition: inset 0.1s, background 0.1s, box-shadow 0.1s;
 }
-/* Front: a punched dot is a raised bump, lit from above. */
 .slate-dot[aria-pressed='true']::before {
-  inset: 10%;
-  background: radial-gradient(circle at 38% 30%, color-mix(in srgb, var(--dots) 55%, var(--surface)), var(--dots) 70%);
-  box-shadow: 0 3px 5px rgb(20 20 30 / 28%);
-}
-/* Back: unpunched positions are shallow rings, punched ones deep pits. */
-.slate.back .slate-dot::before {
-  background: transparent;
-  box-shadow: inset 0 1px 2px var(--engraved-dark), 0 1px 0 var(--engraved-light);
-}
-.slate.back .slate-dot[aria-pressed='true']::before {
   inset: 10%;
   background: radial-gradient(circle at 50% 70%, color-mix(in srgb, var(--engraved) 55%, var(--bg)), color-mix(in srgb, var(--engraved) 60%, black) 75%);
   box-shadow: inset 0 5px 8px var(--engraved-dark), 0 1px 0 var(--engraved-light);
@@ -524,32 +523,25 @@ body.has-slate {
 .slate-dot:active::before {
   transform: scale(0.9);
 }
-.slate.back .slate-cell {
+.slate-cell {
   background: var(--paper-back);
 }
 
-/* Next is on the side the line runs toward: right on the front, left on the back. */
+/* Next is on the left, the way a line runs on a slate. */
 .slate-cell {
   grid-area: 1 / 2;
 }
-#slate-prev {
-  grid-area: 1 / 1;
-  justify-self: end;
-}
 #slate-next {
-  grid-area: 1 / 3;
-  justify-self: start;
-}
-.slate.back #slate-prev {
-  grid-area: 1 / 3;
-  justify-self: start;
-}
-.slate.back #slate-next {
   grid-area: 1 / 1;
   justify-self: end;
 }
-.slate.back .slate-move svg,
-.slate.back #slate-newline svg {
+#slate-prev {
+  grid-area: 1 / 3;
+  justify-self: start;
+}
+/* The icons are drawn as read, so they're mirrored like everything else here. */
+.slate-move svg,
+#slate-newline svg {
   transform: scaleX(-1);
 }
 

@@ -319,14 +319,15 @@ function render() {
       `${FONT_SIZE * 1.04}px`;
   }
 
-  // Where the slate writes: the cell it's punching, or the next cell.
-  if (prefs.showSlate) {
-    const writing = editor.slateCell();
+  // Where the slate writes: the cell it's punching, or the next cell. On the
+  // front, an invisible marker at the caret, for scrolling it into view.
+  {
+    const writing = side === 'back' ? editor.slateCell() : null;
     const at = writing ?? editor.selectionStart;
     const line = lineOf(at);
     const col = at - lineStarts[line];
-    place(`slate-cursor${writing === null ? '' : ' writing'}`, PAD + col * cell - 2, line * LINE + GLYPH_TOP - 4, cell + 4).style.height =
-      `${FONT_SIZE * 1.04 + 8}px`;
+    const className = prefs.showSlate && side === 'back' ? `slate-cursor${writing === null ? '' : ' writing'}` : 'caret-spot';
+    place(className, PAD + col * cell - 2, line * LINE + GLYPH_TOP - 4, cell + 4).style.height = `${FONT_SIZE * 1.04 + 8}px`;
   }
 
   if (feedbackShown()) {
@@ -531,7 +532,7 @@ const sheetScroll = sheet.parentElement!;
  * nears an edge, so the cells just written stay in view too.
  */
 function revealSlateCursor() {
-  const cursor = overlay.querySelector('.slate-cursor');
+  const cursor = overlay.querySelector('.slate-cursor, .caret-spot');
   if (!cursor) return;
   cursor.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   const box = cursor.getBoundingClientRect();
@@ -572,12 +573,10 @@ function slideCell(x: number, y = 0) {
   );
 }
 
-/** Which way the line runs on screen: right on the front, left on the back. */
-const forward = () => (side === 'back' ? -1 : 1);
-
+// The slate is on the back of the page, where lines run right to left.
 const slateActions: [string, () => void][] = [
-  ['slate-next', () => (editor.slateNext(), slideCell(forward()))],
-  ['slate-prev', () => (editor.slateBack(), slideCell(-forward()))],
+  ['slate-next', () => (editor.slateNext(), slideCell(-1))],
+  ['slate-prev', () => (editor.slateBack(), slideCell(1))],
   ['slate-newline', () => (editor.slateNewLine(), slideCell(0, 1))],
 ];
 for (const [id, action] of slateActions) {
@@ -628,8 +627,6 @@ function showSide() {
   const back = side === 'back';
   sheet.classList.toggle('back', back);
   slate.classList.toggle('back', back);
-  // So screen-reader users know which way round the dots are.
-  slateCell.setAttribute('aria-label', back ? 'Dots, mirrored' : 'Dots');
   sideFront.setAttribute('aria-pressed', String(!back));
   sideBack.setAttribute('aria-pressed', String(back));
 }

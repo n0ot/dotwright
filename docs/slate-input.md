@@ -163,3 +163,7 @@ Other changes:
 ### Icons
 
 The slate's buttons show pictures instead of words; screen readers still hear their names (Next cell, Previous cell, New line, Front, Back). Each picture shows what the button does, using small slate cells: Next is an arrow from a written cell to a highlighted empty one, Previous an arrow back to a highlighted written cell, and New line a return arrow from a row of cells down to the start of the next. On the back, these mirror along with the slate. Front is a page with raised dots, and Back a page with its corner turned and the same cell as pits, mirrored. The slate's cell also slides in from the direction of travel when moving to another cell or line.
+
+## Slate on the back only (October 2026)
+
+On the front, the slate's cell was laid out as read, and she began entering cells as if it were the slate, which defeats the point of practising mirroring. The slate now appears only on the back of the page. On the front, only the Front / Back buttons are shown; writing there is by keyboard. Slate input therefore always means mirrored input.

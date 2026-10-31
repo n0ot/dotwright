@@ -60,13 +60,13 @@
     </div>
 
     <!--
-      Writes cells by tapping or clicking dots. It's on the same side of the
-      page as the sheet: as read on the front, mirrored on the back as on a slate.
+      Turns the page over, and on the back, writes cells by tapping or clicking
+      dots, mirrored as on a real slate. On the front, only the switch is shown.
     -->
     <section id="slate" class="slate" aria-label="Slate" hidden>
       <div class="slate-body">
         <button type="button" id="slate-prev" class="slate-move" aria-label="Previous cell"></button>
-        <div class="slate-cell" role="group" aria-label="Dots">
+        <div class="slate-cell" role="group" aria-label="Dots, mirrored">
           <button type="button" class="slate-dot" data-dot="1" aria-pressed="false" aria-label="Dot 1"></button>
           <button type="button" class="slate-dot" data-dot="2" aria-pressed="false" aria-label="Dot 2"></button>
           <button type="button" class="slate-dot" data-dot="3" aria-pressed="false" aria-label="Dot 3"></button>
@@ -91,7 +91,7 @@
       <label class="check"><input type="checkbox" id="show-empty-dots" /> Show empty dot positions</label>
       <label class="check"><input type="checkbox" id="echo-cells" /> Announce each cell as it is entered</label>
       <h3>Slate</h3>
-      <label class="check"><input type="checkbox" id="show-slate" /> Show the slate</label>
+      <label class="check"><input type="checkbox" id="show-slate" /> Show the slate and the Front and Back buttons</label>
       <label class="check"><input type="checkbox" id="slate-clicks" /> Click when a dot is punched</label>
       <p class="setting-row">
         <span id="settings-keys"></span>
@@ -113,22 +113,20 @@
       </ul>
       <h3>Slate</h3>
       <p>
-        The slate at the bottom of the screen writes one cell at a time, at the cursor. Tap or click
-        a dot to punch it, and again to take it out. Next moves on to the next cell; on an empty
-        cell, it writes a space. Previous cell goes back a cell so you can change it. New line
-        starts the next line. Tap or click the page to move the cursor.
+        The page has two sides, and the Front and Back buttons at the bottom of the screen turn it
+        over. <kbd>Alt</kbd>+<kbd>F</kbd> also turns it over. The front is the reading side, with
+        print and feedback. The back is the side you write on with a real slate: the page is
+        mirrored, lines run from right to left, dots are pits, and there's no feedback until you
+        turn the page over.
       </p>
       <p>
-        The page has two sides, and the slate is always on the same side as the page. The front
-        is the reading side: cells are as you read them, and print and feedback are shown. The back
-        is the side you write on with a real slate: the page and the slate are mirrored, so dots 1,
-        2 and 3 are on the right, and the line runs from right to left. Dots on the back are pits,
-        and there's no feedback until you turn the page over.
+        On the back, a slate under the page writes one cell at a time, at the cursor. It's mirrored
+        too: dots 1, 2 and 3 are on the right. Tap or click a dot to punch it, and again to take it
+        out. Next cell moves on to the next cell; on an empty cell, it writes a space. Previous cell
+        goes back a cell so you can change it. New line starts the next line. Tap or click the page
+        to move the cursor.
       </p>
-      <ul>
-        <li>The Front and Back buttons under the slate turn the page over. <kbd>Alt</kbd>+<kbd>F</kbd> also turns it over.</li>
-        <li>The keyboard keeps working alongside the slate. Settings can hide the slate.</li>
-      </ul>
+      <p>The keyboard works on both sides. Settings can hide the slate and the Front and Back buttons.</p>
       <h3>Braille keys</h3>
       <p>
         <kbd>Alt</kbd>+<kbd>B</kbd> changes which keys enter dots 1 to 6, to suit your keyboard
