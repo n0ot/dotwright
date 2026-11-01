@@ -32,9 +32,12 @@ export function playClick(punched: boolean): void {
 }
 
 function audio(): AudioContext {
-  // Safari's "ambient" audio session would follow the silent switch, but on
-  // iPhone it silenced the sounds even with the ringer on, so it isn't used.
-  context ??= new AudioContext();
+  if (!context) {
+    // Safari: sounds follow the iPhone's silent switch and mix with other audio, like a game's effects.
+    const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+    if (session) session.type = 'ambient';
+    context = new AudioContext();
+  }
   if (context.state === 'suspended') void context.resume();
   return context;
 }
