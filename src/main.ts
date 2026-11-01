@@ -50,7 +50,7 @@ const settingsKeys = byId('settings-keys');
  * The page's geometry, smaller on narrow screens such as phones. Set on the
  * page as CSS variables, which #editor in style.css uses.
  */
-const narrowScreen = matchMedia('(max-width: 640px)');
+const narrowScreen = matchMedia('(max-width: 640px), (max-height: 500px)');
 let FONT_SIZE = 30;
 let LINE = 84;
 let PAD = 28;
@@ -295,6 +295,7 @@ function render() {
   textarea.style.height = `${lineStarts.length * LINE + 2 * TOP}px`;
   overlay.replaceChildren();
   if (prefs.shadowDots) place('dot-shadows', 0, 0, undefined, display);
+  if (!display) place('empty-hint', PAD, TOP + LINE + 8, undefined, emptyHint());
 
   const lineOf = (offset: number) => {
     let i = lineStarts.length - 1;
@@ -357,6 +358,20 @@ function render() {
   renderPrintView(states, lineOf, lineStarts.length);
   renderFileStatus();
   renderSlate();
+}
+
+/**
+ * What to do first, shown on an empty page. It's only a visual cue: screen
+ * reader users have the instructions, and the hint is in the hidden overlay.
+ */
+function emptyHint(): string {
+  const touch = coarsePointer.matches;
+  if (side === 'back' && prefs.showSlate) {
+    return touch ? 'Tap dots on the slate below, then Next.' : 'Click dots on the slate below, then Next. The braille keys work here too.';
+  }
+  if (touch && prefs.showSlate) return 'To write with the slate, turn the page over: tap Back, below.';
+  const typing = `Press ${[...editor.dotKeys.toUpperCase()].join(' ')} together to write a cell.`;
+  return prefs.showSlate ? `${typing} Or turn the page over, with Back below, to write on the slate.` : typing;
 }
 
 // ---- Print view -----------------------------------------------------------
@@ -527,6 +542,23 @@ function renderSlate() {
 }
 
 const sheetScroll = sheet.parentElement!;
+const sheetFrame = sheetScroll.parentElement!;
+
+/** Fades the edges of a page wider than the screen, where there's more of it to scroll to. */
+function updateScrollEdges() {
+  const max = sheetScroll.scrollWidth - sheetScroll.clientWidth;
+  sheetFrame.classList.toggle('more-left', sheetScroll.scrollLeft > 2);
+  sheetFrame.classList.toggle('more-right', sheetScroll.scrollLeft < max - 2);
+}
+sheetScroll.addEventListener('scroll', updateScrollEdges, { passive: true });
+new ResizeObserver(updateScrollEdges).observe(sheetScroll);
+
+// The page fills the window, below its last line too: clicking there goes to the end.
+sheet.addEventListener('mousedown', (e) => {
+  if (e.target !== sheet || textarea.disabled) return;
+  e.preventDefault();
+  editor.moveTo(editor.text.length);
+});
 
 /**
  * Keeps the cell being written in view, above the slate. Where the page is
@@ -559,7 +591,8 @@ for (const button of slateDots) {
   });
 }
 
-for (const [id, icon] of Object.entries(SLATE_ICONS)) byId(id).innerHTML = icon;
+// Each icon goes before the button's label, which is also its accessible name.
+for (const [id, icon] of Object.entries(SLATE_ICONS)) byId(id).insertAdjacentHTML('afterbegin', icon);
 
 /**
  * Slides the slate's cell in from the way the stylus moved, so moving on
@@ -603,7 +636,6 @@ function deleteBackward() {
 
 const deleteKey = byId('slate-delete');
 const isApple = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
-deleteKey.setAttribute('aria-label', isApple ? 'Delete' : 'Backspace');
 for (const el of document.querySelectorAll('.delete-key-name')) el.textContent = isApple ? 'Delete' : 'Backspace';
 
 // Held down, it keeps deleting, faster after a moment, like the real key.
@@ -705,9 +737,14 @@ function showSide() {
 sideFront.addEventListener('click', () => side === 'back' && flip());
 sideBack.addEventListener('click', () => side === 'front' && flip());
 
-/** Keeps the space the slate covers clear at the bottom of the page. */
+/**
+ * Keeps the space the slate covers clear: at the bottom of the page, or at
+ * the side on a phone held in landscape (style.css decides which).
+ */
 new ResizeObserver(() => {
-  document.documentElement.style.setProperty('--slate-height', `${slate.hidden ? 0 : slate.offsetHeight}px`);
+  const style = document.documentElement.style;
+  style.setProperty('--slate-height', `${slate.hidden ? 0 : slate.offsetHeight}px`);
+  style.setProperty('--slate-width', `${slate.hidden ? 0 : slate.offsetWidth}px`);
 }).observe(slate);
 
 function applySlatePrefs() {
@@ -1055,6 +1092,37 @@ narrowScreen.addEventListener('change', () => {
   setGeometry();
   measureCell();
   render();
+});
+
+// ---- Menu (small screens) ---------------------------------------------------
+
+// On small screens, the document commands, Settings and Instructions are in
+// a menu, a disclosure: the button shows and hides them.
+const menuButton = byId('menu-button');
+const actions = byId('actions');
+const menuOpen = () => menuButton.getAttribute('aria-expanded') === 'true';
+function setMenu(open: boolean, returnFocus = false) {
+  menuButton.setAttribute('aria-expanded', String(open));
+  actions.classList.toggle('open', open);
+  if (open) actions.querySelector<HTMLElement>('button:not([hidden]), a')?.focus();
+  else if (returnFocus) menuButton.focus();
+}
+menuButton.addEventListener('click', () => setMenu(!menuOpen()));
+actions.addEventListener('click', (e) => {
+  if (menuOpen() && (e.target as Element).closest('button, a')) setMenu(false);
+});
+actions.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && menuOpen()) {
+    e.stopPropagation();
+    setMenu(false, true);
+  }
+});
+actions.addEventListener('focusout', (e) => {
+  const to = e.relatedTarget as Node | null;
+  if (menuOpen() && to && !actions.contains(to) && to !== menuButton) setMenu(false);
+});
+document.addEventListener('pointerdown', (e) => {
+  if (menuOpen() && !(e.target as Element).closest('#actions, #menu-button')) setMenu(false);
 });
 
 // ---- Start ----------------------------------------------------------------

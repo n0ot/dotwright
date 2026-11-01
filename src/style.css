@@ -35,6 +35,13 @@
   --engraved: #8f8b80;
   --engraved-light: rgb(255 255 255 / 95%);
   --engraved-dark: rgb(40 35 25 / 45%);
+  /* The slate: an aluminium guide, with rings for the pits not yet punched. */
+  --metal-hi: #dfe2e6;
+  --metal-lo: #a9aeb6;
+  --metal-edge: rgb(0 0 0 / 14%);
+  --pit-ring: #8a857a;
+  --pit-lit: #7a7468;
+  --pit-deep: #2b2823;
   --shadow: 0 1px 2px rgb(20 20 30 / 4%), 0 8px 28px rgb(20 20 30 / 6%);
   color-scheme: light;
 }
@@ -65,6 +72,12 @@
     --engraved: #7d796f;
     --engraved-light: rgb(255 255 255 / 10%);
     --engraved-dark: rgb(0 0 0 / 75%);
+    --metal-hi: #5a5e66;
+    --metal-lo: #393c43;
+    --metal-edge: rgb(255 255 255 / 8%);
+    --pit-ring: #77736a;
+    --pit-lit: #f1efe9;
+    --pit-deep: #a9a499;
     --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 28px rgb(0 0 0 / 30%);
     color-scheme: dark;
   }
@@ -75,11 +88,16 @@
 }
 
 body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
   margin: 0;
-  padding: 28px 16px 64px;
+  padding: 28px max(16px, env(safe-area-inset-right)) 32px max(16px, env(safe-area-inset-left));
   background: var(--bg);
   color: var(--text);
   font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-text-size-adjust: 100%;
 }
 
 /* --cell is set from a measurement in main.ts, and the page geometry by setGeometry() there. */
@@ -94,46 +112,73 @@ body {
   --sheet-width: calc(41 * var(--cell, 18px) + 2 * var(--pad) + var(--gutter) + 2px);
 }
 
+/* The page fills the window down to the slate, so it looks like a sheet of paper, not a text box. */
 .app {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   width: min(100%, var(--sheet-width));
   margin: 0 auto;
+}
+main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
 }
 
 /* ---- Top bar ---- */
 
 .topbar {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px 16px;
+  gap: 8px 12px;
   margin-bottom: 20px;
 }
 .brand {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   margin-right: auto;
+}
+.logo {
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+.logo rect {
+  fill: var(--accent);
+}
+.logo circle {
+  fill: var(--on-accent);
+}
+.logo .unraised {
+  opacity: 0.35;
 }
 .brand h1 {
   margin: 0;
   font-size: 20px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-weight: 680;
+  letter-spacing: -0.015em;
 }
 .tagline {
-  margin: 0;
+  margin: 2px 0 0;
   color: var(--muted);
   font-size: 14px;
 }
+.actions,
 .toolbar,
 .toolbar-end {
   display: flex;
   align-items: center;
   gap: 2px;
 }
-.toolbar-end {
+.actions {
   padding-left: 12px;
   border-left: 1px solid var(--rule);
+}
+.menu-button {
+  display: none;
 }
 
 button {
@@ -184,7 +229,7 @@ input:focus-visible {
   width: 30px;
   height: 18px;
   border-radius: 9px;
-  background: var(--rule);
+  background: var(--faint);
   transition: background 0.15s;
 }
 .switch-thumb {
@@ -194,7 +239,7 @@ input:focus-visible {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--surface);
+  background: #fff;
   box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
   transition: transform 0.15s;
 }
@@ -213,10 +258,44 @@ input:focus-visible {
   font-size: 13px;
 }
 
+.sheet-frame {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 200px;
+}
 .sheet-scroll {
+  display: flex;
+  flex: 1;
   overflow-x: auto;
   padding: 4px;
   margin: -4px;
+}
+/* Where the page is wider than the screen, its edges fade out toward the rest of it. */
+.sheet-frame::before,
+.sheet-frame::after {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.sheet-frame::before {
+  left: -4px;
+  background: linear-gradient(to right, var(--bg), transparent);
+}
+.sheet-frame::after {
+  right: -4px;
+  background: linear-gradient(to left, var(--bg), transparent);
+}
+.sheet-frame.more-left::before,
+.sheet-frame.more-right::after {
+  opacity: 1;
 }
 
 .sheet {
@@ -225,8 +304,9 @@ input:focus-visible {
   padding-right: var(--gutter);
   background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: var(--shadow);
+  cursor: text;
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.17s ease-out, background 0.17s;
 }
 /*
@@ -292,6 +372,17 @@ input:focus-visible {
 .overlay > * {
   position: absolute;
   white-space: nowrap;
+}
+/* What to do first, on an empty page. On the back, it's turned to read the right way. */
+.overlay > .empty-hint {
+  width: min(340px, calc(100vw - 96px));
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.45;
+  white-space: normal;
+}
+.sheet.back .empty-hint {
+  transform: scaleX(-1);
 }
 /* Unraised dot positions, drawn pale behind the raised dots; must match #editor's text layout. */
 .overlay > .dot-shadows {
@@ -418,17 +509,18 @@ input:focus-visible {
 /* ---- Slate ---- */
 
 body.has-slate {
-  padding-bottom: calc(var(--slate-height) + 32px);
+  padding-bottom: calc(var(--slate-height) + 24px);
 }
 
 .slate {
   --dot: 56px;
+  --key-w: 100px;
   position: fixed;
   z-index: 5;
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 14px 16px calc(12px + env(safe-area-inset-bottom));
+  padding: 14px max(16px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
@@ -447,59 +539,104 @@ body.has-slate {
   flex: none;
 }
 
+/*
+ * The slate is only shown on the back of the page, where it writes as a
+ * real slate does: mirrored, with dots 1 to 3 on the right, punched as pits.
+ * Next, the key used most, is a tall key on the left, the way the stylus
+ * moves. Delete and New line are on the right, as on a phone keyboard.
+ * On the front, only the Front / Back switch is shown.
+ */
 .slate-body {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 16px;
+  grid-template-rows: 1fr 1fr;
+  gap: 10px 16px;
   max-width: 520px;
   margin: 0 auto;
 }
-.slate-move {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  max-width: 104px;
-  aspect-ratio: 1;
-  padding: 0;
-  border-radius: 20px;
-  background: var(--hover);
+.slate:not(.back) .slate-body {
+  display: none;
 }
-.slate-move svg {
-  width: 62%;
-  height: 62%;
+.slate:not(.back) .slate-position {
+  visibility: hidden;
+}
+
+.slate-cell {
+  grid-area: 1 / 2 / 3 / 3;
+}
+#slate-next {
+  grid-area: 1 / 1 / 3 / 2;
+  justify-self: end;
+}
+#slate-delete {
+  grid-area: 1 / 3;
+  justify-self: start;
+}
+#slate-newline {
+  grid-area: 2 / 3;
+  justify-self: start;
+}
+
+/* Keys with a picture and a name, like a phone keyboard's. */
+.slate-key {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  max-width: var(--key-w);
+  height: 100%;
+  min-height: 60px;
+  padding: 6px 4px;
+  border-radius: 18px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.15;
+}
+.slate-key svg {
+  width: 38px;
+  height: 38px;
 }
 #slate-next {
   background: var(--accent);
   color: var(--on-accent);
+  box-shadow: 0 1px 0 var(--key-edge);
+}
+#slate-next svg {
+  width: 52px;
+  height: 52px;
+}
+#slate-next:active {
+  filter: brightness(0.9);
+}
+.slate-key.key {
+  background: var(--key);
+  color: var(--text);
+  box-shadow: 0 1px 0 var(--key-edge);
+}
+.slate-key.key:active {
+  background: var(--key-pressed);
+}
+/* The icons are drawn as read, so they're mirrored like everything else here. */
+.slate-key svg {
+  transform: scaleX(-1);
 }
 
-/* The window of a slate's guide: a recessed cell with six pits. */
+/* The window of a slate's guide: paper showing through an aluminium frame, with six pits. */
 .slate-cell {
   display: grid;
   grid-template-columns: repeat(2, var(--dot));
   grid-template-rows: repeat(3, var(--dot));
+  place-content: center;
   gap: 8px 14px;
   padding: 12px 16px;
-  background: var(--bg);
-  border: 1px solid var(--rule);
-  border-radius: 20px;
-  box-shadow: inset 0 2px 6px rgb(20 20 30 / 8%);
-}
-/*
- * The slate is only shown on the back of the page, where it writes as a
- * real slate does: mirrored, with dots 1 to 3 on the right, punched as pits.
- * On the front, only the Front / Back switch is shown.
- */
-.slate:not(.back) .slate-body {
-  display: none;
-}
-.slate:not(.back) #slate-newline,
-.slate:not(.back) .slate-position {
-  visibility: hidden;
-}
-.slate:not(.back) .slate-bar {
-  margin-top: 0;
+  border: 9px solid transparent;
+  border-radius: 26px;
+  background:
+    linear-gradient(var(--paper-back), var(--paper-back)) padding-box,
+    linear-gradient(160deg, var(--metal-hi), var(--metal-lo)) border-box;
+  box-shadow: inset 0 3px 6px rgb(0 0 0 / 16%), 0 0 0 1px var(--metal-edge), 0 2px 6px rgb(20 20 30 / 12%);
 }
 
 .slate-dot[data-dot='1'] { grid-area: 1 / 2; }
@@ -518,75 +655,27 @@ body.has-slate {
 .slate-dot:hover {
   background: transparent;
 }
-/* Unpunched positions are shallow rings; punched ones are deep pits. */
+/* Unpunched positions are rings; punched ones are deep pits, filling the space. */
 .slate-dot::before {
   content: '';
   position: absolute;
-  inset: 22%;
+  inset: 24%;
+  border: 2px solid var(--pit-ring);
   border-radius: 50%;
-  box-shadow: inset 0 1px 2px var(--engraved-dark), 0 1px 0 var(--engraved-light);
-  transition: inset 0.1s, background 0.1s, box-shadow 0.1s;
+  box-shadow: inset 0 1px 2px var(--engraved-dark);
+  transition: inset 0.1s, background 0.1s, box-shadow 0.1s, border-color 0.1s;
+}
+.slate-dot:hover::before {
+  border-color: var(--accent);
 }
 .slate-dot[aria-pressed='true']::before {
-  inset: 10%;
-  background: radial-gradient(circle at 50% 70%, color-mix(in srgb, var(--engraved) 55%, var(--bg)), color-mix(in srgb, var(--engraved) 60%, black) 75%);
-  box-shadow: inset 0 5px 8px var(--engraved-dark), 0 1px 0 var(--engraved-light);
+  inset: 8%;
+  border-color: transparent;
+  background: radial-gradient(circle at 50% 72%, var(--pit-lit), var(--pit-deep) 72%);
+  box-shadow: inset 0 5px 7px rgb(0 0 0 / 40%), 0 1px 0 var(--engraved-light);
 }
 .slate-dot:active::before {
   transform: scale(0.9);
-}
-.slate-cell {
-  background: var(--paper-back);
-}
-
-/* Next is on the left, the way a line runs on a slate. */
-.slate-cell {
-  grid-area: 1 / 2;
-}
-#slate-next {
-  grid-area: 1 / 1;
-  justify-self: end;
-}
-#slate-delete {
-  grid-area: 1 / 3;
-  justify-self: start;
-}
-/* Delete looks like a phone keyboard's special keys: a darker grey key with a slight edge. */
-.slate-move.key {
-  background: var(--key);
-  box-shadow: 0 1px 0 var(--key-edge);
-}
-.slate-move.key:active {
-  background: var(--key-pressed);
-}
-/* The icons are drawn as read, so they're mirrored like everything else here. */
-.slate-move svg,
-#slate-newline svg {
-  transform: scaleX(-1);
-}
-
-/* Front and Back: turns the page over. */
-.side-switch {
-  display: flex;
-  padding: 3px;
-  background: var(--hover);
-  border-radius: 12px;
-}
-.side-switch button {
-  justify-content: center;
-  width: 64px;
-  height: 52px;
-  padding: 0;
-  color: var(--muted);
-}
-.side-switch svg {
-  width: 42px;
-  height: 42px;
-}
-.side-switch button[aria-pressed='true'] {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: 0 1px 3px rgb(20 20 30 / 16%);
 }
 
 .slate-bar {
@@ -597,32 +686,40 @@ body.has-slate {
   max-width: 520px;
   margin: 12px auto 0;
 }
-.slate-bar button {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 10px;
-}
-#slate-newline {
-  justify-content: center;
-  width: 64px;
-  height: 58px;
-  padding: 0;
+
+/* Front and Back: turns the page over. */
+.side-switch {
+  grid-column: 2;
+  display: flex;
+  padding: 3px;
   background: var(--hover);
   border-radius: 14px;
 }
-#slate-newline svg {
-  width: 42px;
-  height: 42px;
+.side-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 46px;
+  padding: 0 14px 0 6px;
+  border-radius: 11px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
 }
-#slate-newline {
-  justify-self: start;
+.side-switch svg {
+  width: 34px;
+  height: 34px;
 }
+.side-switch button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgb(20 20 30 / 16%);
+}
+
 .slate-position {
+  grid-column: 3;
   justify-self: end;
-}
-.slate-position {
   margin: 0;
-  min-width: 96px;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.3;
@@ -636,63 +733,171 @@ body.has-slate {
 
 /* Touch screens keep :hover after a tap; don't let it change how buttons look. */
 @media (hover: none) {
-  .slate-move:hover {
-    background: var(--hover);
-  }
-  .slate-move.key:hover {
+  .slate-key.key:hover {
     background: var(--key);
   }
   #slate-next:hover {
     background: var(--accent);
   }
-  #slate-newline:hover {
-    background: var(--hover);
+  .slate-dot:hover::before {
+    border-color: var(--pit-ring);
+  }
+  .slate-dot[aria-pressed='true']:hover::before {
+    border-color: transparent;
+  }
+  .side-switch button:hover {
+    background: transparent;
   }
   .side-switch button[aria-pressed='true']:hover {
     background: var(--surface);
   }
 }
 
-/* ---- Narrow screens, such as phones ---- */
+/* ---- Small screens: phones in either orientation ---- */
 
-@media (max-width: 640px) {
+@media (max-width: 640px), (max-height: 500px) {
   body {
-    padding-top: 16px;
+    padding-top: max(12px, env(safe-area-inset-top));
   }
   .tagline {
     display: none;
   }
   .topbar {
-    gap: 6px 4px;
-    margin-bottom: 12px;
+    gap: 4px;
+    margin-bottom: 10px;
   }
-  .brand {
-    width: 100%;
+  #toggle-feedback {
+    min-height: 44px;
+    padding: 0 10px;
   }
-  .toolbar-end {
-    padding-left: 0;
-    border-left: 0;
-    margin-left: auto;
+  /* The document commands, Settings and Instructions go in a menu. */
+  .menu-button {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 12px;
   }
-  button,
-  .help-link {
-    padding: 6px 9px;
+  .menu-button svg {
+    width: 22px;
+    height: 22px;
+    fill: currentColor;
+  }
+  .menu-button[aria-expanded='true'] {
+    background: var(--hover);
+  }
+  .actions {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 4px);
+    right: 0;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    min-width: 220px;
+    padding: 6px;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    box-shadow: 0 16px 48px rgb(0 0 0 / 20%);
+  }
+  .actions.open {
+    display: flex;
+  }
+  .actions .toolbar,
+  .actions .toolbar-end {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .actions .toolbar-end {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--rule);
+  }
+  .actions button,
+  .actions .help-link {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 16px;
+    text-align: left;
+  }
+  .file-status {
+    font-size: 12px;
   }
   .slate {
-    --dot: min(62px, 15vw);
+    --dot: min(60px, 15vw);
+    --key-w: 96px;
     padding-top: 12px;
   }
   .slate-body {
-    gap: 12px;
+    gap: 8px 12px;
   }
-  .slate-move {
-    max-width: 96px;
-  }
-  .slate-position {
-    min-width: 0;
+  .slate-cell {
+    padding: 10px 14px;
   }
   .slate-position {
     font-size: 12px;
+  }
+}
+
+/* Phones in portrait: the page runs to the edges of the screen, and scrolls sideways. */
+@media (max-width: 640px) {
+  .sheet-scroll {
+    margin: -4px calc(-1 * max(16px, env(safe-area-inset-left)));
+    padding: 4px max(16px, env(safe-area-inset-left));
+  }
+  .sheet-frame::before {
+    left: calc(-1 * max(16px, env(safe-area-inset-left)));
+  }
+  .sheet-frame::after {
+    right: calc(-1 * max(16px, env(safe-area-inset-right)));
+  }
+}
+
+/*
+ * Phones in landscape: there's no room for the slate under the page, so on
+ * the back it goes down the right side, where the right thumb is.
+ */
+@media (orientation: landscape) and (max-height: 500px) {
+  .slate.back {
+    --dot: min(46px, 12.5vh);
+    --key-w: 76px;
+    top: 0;
+    left: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+    padding: max(8px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) 16px;
+    border-top: 0;
+    border-left: 1px solid var(--rule);
+    box-shadow: -8px 0 28px rgb(20 20 30 / 6%);
+  }
+  .slate.back .slate-body {
+    grid-template-columns: var(--key-w) auto var(--key-w);
+    gap: 8px 10px;
+    margin: 0;
+  }
+  .slate.back .slate-cell {
+    gap: 6px 12px;
+    padding: 8px 12px;
+    border-width: 8px;
+  }
+  .slate.back .slate-key svg {
+    width: 32px;
+    height: 32px;
+  }
+  .slate.back .slate-bar {
+    width: 100%;
+    margin: 0;
+  }
+  body.has-slate:has(.slate.back) {
+    padding-bottom: 16px;
+    padding-right: calc(var(--slate-width) + 16px);
+  }
+  :root:has(.slate.back) {
+    scroll-padding: 16px 0;
   }
 }
 

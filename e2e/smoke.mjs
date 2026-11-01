@@ -239,7 +239,7 @@ for (const browserType of [chromium, webkit]) {
   await page.waitForTimeout(80);
   check('Delete says what it deleted', (await lastSaid(page)) === 'space', await lastSaid(page));
   check('Delete is named for the platform',
-    (await page.getAttribute('#slate-delete', 'aria-label')) === (process.platform === 'darwin' ? 'Delete' : 'Backspace'));
+    (await page.locator('#slate-delete').textContent()).trim() === (process.platform === 'darwin' ? 'Delete' : 'Backspace'));
   await punch(3, 6);
   await page.click('#slate-delete');
   check('Delete clears dots not yet written first', (await ta.inputValue()) === 'ab' && (await pressed()) === '', `${await ta.inputValue()} ${await pressed()}`);
@@ -307,7 +307,42 @@ for (const browserType of [chromium, webkit]) {
   const slateTop = (await page.locator('#slate').boundingBox()).y;
   const cursor = await page.locator('.slate-cursor').boundingBox();
   check('cursor is above the slate', cursor.y + cursor.height <= slateTop, `${cursor.y} ${slateTop}`);
+  check('empty page has no hint once written', (await page.locator('.empty-hint').count()) === 0);
+
+  // On a phone, the document commands are in a menu.
+  check('document commands are in a menu', await page.locator('#new-doc').isHidden() && await page.locator('#menu-button').isVisible());
+  await page.tap('#menu-button');
+  check('menu opens', await page.locator('#new-doc').isVisible() && (await page.getAttribute('#menu-button', 'aria-expanded')) === 'true');
+  check('menu moves focus to its first item', await page.evaluate(() => document.activeElement.id === 'new-doc'));
+  await page.keyboard.press('Escape');
+  check('Escape closes the menu and returns focus',
+    await page.locator('#new-doc').isHidden() && await page.evaluate(() => document.activeElement.id === 'menu-button'));
+  await page.tap('#menu-button');
+  await page.locator('#file-status').tap({ position: { x: 8, y: 6 } });
+  check('tapping elsewhere closes the menu', await page.locator('#new-doc').isHidden());
   check('no page errors on the phone', errors.length === 0, errors.join('; '));
+  await context.close();
+
+  // Turned sideways, the slate goes down the right side, beside the page.
+  console.log('webkit, iPhone landscape');
+  const land = await browser.newContext(devices['iPhone 14 landscape']);
+  const lpage = await land.newPage();
+  await lpage.goto(URL);
+  await lpage.waitForFunction(() => !document.querySelector('#editor').disabled);
+  check('empty page says how to start', (await lpage.locator('.empty-hint').textContent()).includes('Back'));
+  await lpage.tap('#side-back');
+  await lpage.waitForTimeout(300);
+  const slateBox = await lpage.locator('#slate').boundingBox();
+  const sheetBox = await lpage.locator('.sheet-scroll').boundingBox();
+  const view = lpage.viewportSize();
+  check('slate is down the side', slateBox.y <= 1 && slateBox.height >= view.height - 1, JSON.stringify(slateBox));
+  check('page is beside the slate, not under it', sheetBox.x + sheetBox.width <= slateBox.x + 1 && sheetBox.height > view.height / 2,
+    `${JSON.stringify(sheetBox)} ${JSON.stringify(slateBox)}`);
+  const cellBox = await lpage.locator('.slate-cell').boundingBox();
+  check('whole slate fits on screen', cellBox.y >= 0 && cellBox.y + cellBox.height <= view.height, JSON.stringify(cellBox));
+  await lpage.tap('.slate-dot[data-dot="1"]');
+  await lpage.tap('#slate-next');
+  check('slate writes in landscape', (await lpage.locator('#editor').inputValue()) === 'a');
   await browser.close();
 }
 process.exit(failures ? 1 : 0);

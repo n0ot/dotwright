@@ -4,46 +4,65 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Dotwright</title>
+    <meta name="description" content="Practise writing braille, on a keyboard or a virtual slate, with feedback as you go." />
+    <meta name="theme-color" content="#f6f6f3" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111215" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b5bdb'/%3E%3Cg fill='%23fff'%3E%3Ccircle cx='11.5' cy='8.5' r='3'/%3E%3Ccircle cx='11.5' cy='16' r='3'/%3E%3Ccircle cx='20.5' cy='8.5' r='3'/%3E%3Ccircle cx='20.5' cy='23.5' r='3'/%3E%3C/g%3E%3Cg fill='%23fff' opacity='.35'%3E%3Ccircle cx='11.5' cy='23.5' r='3'/%3E%3Ccircle cx='20.5' cy='16' r='3'/%3E%3C/g%3E%3C/svg%3E" />
   </head>
   <body>
     <div class="app">
       <header class="topbar">
         <div class="brand">
+          <svg class="logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+            <rect width="32" height="32" rx="8" />
+            <circle cx="11.5" cy="8.5" r="3" /><circle cx="11.5" cy="16" r="3" />
+            <circle cx="20.5" cy="8.5" r="3" /><circle cx="20.5" cy="23.5" r="3" />
+            <circle class="unraised" cx="11.5" cy="23.5" r="3" /><circle class="unraised" cx="20.5" cy="16" r="3" />
+          </svg>
           <h1>Dotwright</h1>
           <p class="tagline">Learn by Brailling</p>
         </div>
-        <div class="toolbar" role="group" aria-label="Document">
-          <button type="button" id="new-doc">New</button>
-          <button type="button" id="open-doc">Open…</button>
-          <button type="button" id="save-doc">Save</button>
-          <button type="button" id="save-as-doc" hidden>Save as…</button>
-        </div>
-        <div class="toolbar-end">
-          <button type="button" id="toggle-feedback" class="switch" role="switch" aria-checked="true">
-            Feedback<span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-          </button>
-          <button type="button" id="show-settings">Settings</button>
-          <a href="#help" id="show-help" class="help-link">Instructions</a>
+        <button type="button" id="toggle-feedback" class="switch" role="switch" aria-checked="true">
+          Feedback<span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+        </button>
+        <!-- On small screens, the document commands, Settings and Instructions are in this menu. -->
+        <button type="button" id="menu-button" class="menu-button" aria-expanded="false" aria-controls="actions">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
+          <span class="visually-hidden">Menu</span>
+        </button>
+        <div class="actions" id="actions">
+          <div class="toolbar" role="group" aria-label="Document">
+            <button type="button" id="new-doc">New</button>
+            <button type="button" id="open-doc">Open…</button>
+            <button type="button" id="save-doc">Save</button>
+            <button type="button" id="save-as-doc" hidden>Save as…</button>
+          </div>
+          <div class="toolbar-end">
+            <button type="button" id="show-settings">Settings</button>
+            <a href="#help" id="show-help" class="help-link">Instructions</a>
+          </div>
         </div>
       </header>
 
       <main>
         <p id="file-status" class="file-status"></p>
         <label for="editor" class="visually-hidden">Braille document</label>
-        <div class="sheet-scroll">
-          <div class="sheet" id="sheet">
-            <div class="overlay" id="overlay" aria-hidden="true"></div>
-            <textarea
-              id="editor"
-              wrap="off"
-              spellcheck="false"
-              autocomplete="off"
-              autocapitalize="off"
-              autocorrect="off"
-              disabled
-            ></textarea>
-            <!-- Mouse access to the correct form; keyboard users have Alt+R. -->
-            <div id="word-popover" class="word-popover" aria-hidden="true" hidden></div>
+        <div class="sheet-frame">
+          <div class="sheet-scroll">
+            <div class="sheet" id="sheet">
+              <div class="overlay" id="overlay" aria-hidden="true"></div>
+              <textarea
+                id="editor"
+                wrap="off"
+                spellcheck="false"
+                autocomplete="off"
+                autocapitalize="off"
+                autocorrect="off"
+                disabled
+              ></textarea>
+              <!-- Mouse access to the correct form; keyboard users have Alt+R. -->
+              <div id="word-popover" class="word-popover" aria-hidden="true" hidden></div>
+            </div>
           </div>
         </div>
         <textarea
@@ -65,7 +84,6 @@
     -->
     <section id="slate" class="slate" aria-label="Slate" hidden>
       <div class="slate-body">
-        <button type="button" id="slate-delete" class="slate-move key" aria-label="Delete"></button>
         <div class="slate-cell" role="group" aria-label="Dots, mirrored">
           <button type="button" class="slate-dot" data-dot="1" aria-pressed="false" aria-label="Dot 1"></button>
           <button type="button" class="slate-dot" data-dot="2" aria-pressed="false" aria-label="Dot 2"></button>
@@ -74,13 +92,14 @@
           <button type="button" class="slate-dot" data-dot="5" aria-pressed="false" aria-label="Dot 5"></button>
           <button type="button" class="slate-dot" data-dot="6" aria-pressed="false" aria-label="Dot 6"></button>
         </div>
-        <button type="button" id="slate-next" class="slate-move" aria-label="Next cell"></button>
+        <button type="button" id="slate-next" class="slate-key"><span class="key-label">Next</span></button>
+        <button type="button" id="slate-delete" class="slate-key key"><span class="key-label delete-key-name">Delete</span></button>
+        <button type="button" id="slate-newline" class="slate-key key"><span class="key-label">New line</span></button>
       </div>
       <div class="slate-bar">
-        <button type="button" id="slate-newline" aria-label="New line"></button>
         <div class="side-switch" role="group" aria-label="Side of the page">
-          <button type="button" id="side-front" aria-pressed="true" aria-label="Front"></button>
-          <button type="button" id="side-back" aria-pressed="false" aria-label="Back"></button>
+          <button type="button" id="side-front" aria-pressed="true"><span class="key-label">Front</span></button>
+          <button type="button" id="side-back" aria-pressed="false"><span class="key-label">Back</span></button>
         </div>
         <p id="slate-position" class="slate-position"></p>
       </div>
@@ -113,9 +132,9 @@
       </ul>
       <h3>Slate</h3>
       <p>
-        The page has two sides, and the Front and Back buttons at the bottom of the screen turn it
-        over. <kbd>Alt</kbd>+<kbd>F</kbd> also turns it over. The front is the reading side, with
-        print and feedback. The back is the side you write on with a real slate: the page is
+        The page has two sides, and the Front and Back buttons under the page turn it over.
+        <kbd>Alt</kbd>+<kbd>F</kbd> also turns it over. The front is the reading side, with print
+        and feedback. The back is the side you write on with a real slate: the page is
         mirrored, lines run from right to left, dots are pits, and there's no feedback until you
         turn the page over.
       </p>
@@ -148,6 +167,7 @@
         <li><kbd>Alt</kbd>+<kbd>T</kbd>: turn feedback (print and contraction indicators) on or off.</li>
       </ul>
       <h3>Document</h3>
+      <p>On a small screen, New, Open, Save, Settings and these instructions are in the Menu button at the top.</p>
       <ul>
         <li><kbd>Alt</kbd>+<kbd>L</kbd>: page, line and cell of the cursor.</li>
         <li>

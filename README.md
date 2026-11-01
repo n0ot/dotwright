@@ -17,7 +17,7 @@ Dotwright never changes your braille. There's no "fix" button: you make every co
 ## Features
 
 - **Six-key entry** with F D S J K L and the space bar, or any six keys you choose, to suit your keyboard layout.
-- **A slate** for practising slate-and-stylus writing by tapping dots on a phone or clicking with a mouse or trackpad. The page has two sides, turned over with the Front and Back buttons at the bottom of the screen. The front is the reading side, with print and feedback. The back is the side you write on with a real slate: the page is mirrored, lines run right to left, dots are pits, and there's no feedback until you turn the page over. The slate appears only on the back, mirrored too, with dots 1, 2 and 3 on the right. It works like a braille keyboard: set the dots, then Next cell writes them at the cursor, and Delete (Backspace on Windows and Linux) erases the cell before it, like the key on a keyboard. The keyboard works on both sides, and Settings can hide the slate.
+- **A slate** for practising slate-and-stylus writing by tapping dots on a phone or clicking with a mouse or trackpad. The page has two sides, turned over with the Front and Back buttons under the page. The front is the reading side, with print and feedback. The back is the side you write on with a real slate: the page is mirrored, lines run right to left, dots are pits, and there's no feedback until you turn the page over. The slate appears only on the back, mirrored too, with dots 1, 2 and 3 on the right. It works like a braille keyboard: set the dots, then Next cell writes them at the cursor, and Delete (Backspace on Windows and Linux) erases the cell before it, like the key on a keyboard. The keyboard works on both sides, and Settings can hide the slate.
 - **Screen reader support** for VoiceOver on macOS and NVDA on Windows. Moving through the braille announces each cell as its Braille ASCII character. Moving onto a word with an error says "contraction error", and keyboard commands give the print and status of the word at the cursor.
 - **A print view** for screen reader users: a hidden, read-only copy of the print, line for line. Moving through it moves the braille cursor to the same word.
 - **BRF files**: open existing ones and save your work, in the standard 40-cell, 25-line page format. Your braille is saved exactly as you wrote it, mistakes included.
@@ -34,7 +34,7 @@ Press Alt+H in Dotwright for the full list of keyboard commands.
 - Contraction checking is always against fully contracted UEB. There are no settings for learning a subset of contractions.
 - Safari and Chrome on a computer, and Safari on iPhone, are tested; Firefox and Android aren't. NVDA support hasn't been tested with NVDA itself yet.
 - The slate is designed for sighted use. Its buttons work with a keyboard and screen reader, but there's no direct-touch slate for VoiceOver on iPhone.
-- On a phone, a 40-cell line is wider than the screen, so the page scrolls sideways to follow the cursor.
+- On a phone, a 40-cell line is wider than the screen, so the page scrolls sideways to follow the cursor. Held sideways, the slate moves to the right of the page. The document commands, Settings and Instructions are in a menu at the top.
 - A cell punched without mirroring often reads as some other braille that liblouis accepts, so it may show odd print rather than a contraction error.
 
 ## Development
@@ -97,7 +97,7 @@ The browser tests drive the real app in Chromium and WebKit, Safari's engine. In
 npx playwright install chromium webkit
 ```
 
-The smoke test covers six-key typing, feedback, the print view, go-to, custom keys, saving, recovery, discarding and the slate, including on an emulated iPhone. Run it against the development server:
+The smoke test covers six-key typing, feedback, the print view, go-to, custom keys, saving, recovery, discarding and the slate, including on an emulated iPhone in portrait and landscape. Run it against the development server:
 
 ```sh
 npm run dev          # in one terminal
