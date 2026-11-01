@@ -8,6 +8,11 @@ export interface Prefs {
   echoCells: boolean;
   /** Play a click when a dot is punched on the slate. */
   slateClicks: boolean;
+  /**
+   * Interline the word being written after every cell, not only once it's
+   * finished. Off by default: the reading changing as she writes distracts.
+   */
+  liveInterlining: boolean;
   /** Ring a bell near the end of a line, like a braillewriter's margin bell. */
   marginBell: boolean;
   /**
@@ -17,7 +22,7 @@ export interface Prefs {
   side: 'front' | 'back';
 }
 
-const DEFAULTS: Prefs = { shadowDots: true, echoCells: true, slateClicks: true, marginBell: true, side: 'front' };
+const DEFAULTS: Prefs = { shadowDots: true, echoCells: true, slateClicks: true, marginBell: true, liveInterlining: false, side: 'front' };
 
 export function loadPrefs(): Prefs {
   try {

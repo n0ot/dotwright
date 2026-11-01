@@ -5,7 +5,7 @@ import { chromium, webkit } from 'playwright';
 const URL = process.env.URL ?? 'http://localhost:5173/';
 const DOTS = { 1: 'f', 2: 'd', 3: 's', 4: 'j', 5: 'k', 6: 'l' };
 // Braille ASCII to dot numbers, for the cells this test types.
-const CELLS = { a: '1', n: '1345', d: '145', '&': '12346', '!': '2346', c: '14', t: '2345', '4': '256', ',': '6' };
+const CELLS = { a: '1', n: '1345', d: '145', '&': '12346', '!': '2346', c: '14', t: '2345', '4': '256', ',': '6', i: '24' };
 
 async function chord(page, ch) {
   if (ch === ' ') return page.keyboard.press('Space');
@@ -322,6 +322,32 @@ for (const browserType of [chromium, webkit]) {
     await page.keyboard.press('Enter');
     return (await ta.inputValue()) === before + '\n';
   })());
+
+  // A word written on the slate, with no space after it, is read back too,
+  // until writing more of it in Brailler mode makes it unfinished again.
+  await page.keyboard.press('Alt+KeyM');
+  await page.waitForTimeout(300);
+  await punch(1, 3);
+  await page.click('#slate-next');
+  await page.keyboard.press('Alt+KeyM');
+  await page.waitForTimeout(300);
+  const prints = () => page.locator('.print').allTextContents();
+  check('the word the slate stopped in is interlined in Brailler mode', (await prints()).includes('knowledge'), JSON.stringify(await prints()));
+  await chord(page, 'i');
+  check('writing more of it takes the interlining away', !(await prints()).includes('knowledge') && (await ta.inputValue()).endsWith('\nki'),
+    JSON.stringify(await prints()));
+  await openSettings();
+  check('interlining each word as it is written is off by default', !(await page.isChecked('#live-interlining')));
+  await page.check('#live-interlining');
+  await page.click('#settings-done button');
+  check('with it on, the word being written is interlined, unchecked',
+    (await page.locator('.print.live').allTextContents()).join() === 'ki' && (await page.locator('.print.live.differs, .print.live.unreadable').count()) === 0,
+    JSON.stringify(await prints()));
+  await chord(page, 'n');
+  check('and the interlining follows each cell', (await page.locator('.print.live').allTextContents()).join() !== 'ki', JSON.stringify(await prints()));
+  await openSettings();
+  await page.uncheck('#live-interlining');
+  await page.click('#settings-done button');
 
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Slash' : 'Control+Slash');
   check('Command or Ctrl + / opens the instructions', await page.locator('#help[open]').count() === 1);

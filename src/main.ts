@@ -43,6 +43,7 @@ const showEmptyDots = byId<HTMLInputElement>('show-empty-dots');
 const slateClicksInput = byId<HTMLInputElement>('slate-clicks');
 const echoCellsInput = byId<HTMLInputElement>('echo-cells');
 const marginBellInput = byId<HTMLInputElement>('margin-bell');
+const liveInterliningInput = byId<HTMLInputElement>('live-interlining');
 
 /**
  * The page's geometry, smaller on narrow screens such as phones. Set on the
@@ -385,20 +386,24 @@ function render() {
   if (feedbackShown()) {
     let lastLine = -1;
     let lastRight = 0;
-    for (const { word, feedback } of states) {
+    for (const state of states) {
+      const { word } = state;
+      // The word being written is only read, not checked, and only if asked for.
+      const live = !state.feedback && prefs.liveInterlining;
+      const feedback = state.feedback ?? (live ? checkDocument(editor.text).get(word.start)! : null);
       if (!feedback) continue;
       const line = lineOf(word.start);
       const col = word.start - lineStarts[line];
       const x = PAD + col * cell;
       const top = line * LINE;
-      const issue = isIssue(feedback);
+      const issue = !live && isIssue(feedback);
       // Print is usually wider than its braille; shift labels right rather than overlap.
       measureCtx.font = labelFont(issue);
       const labelWidth = measureCtx.measureText(feedback.print).width;
       const labelX = line === lastLine ? Math.max(x, lastRight + 6) : x;
       lastLine = line;
       lastRight = labelX + labelWidth;
-      place(`print${issue ? ` ${feedback.status}` : ''}`, labelX, top + GLYPH_TOP - 19, undefined, feedback.print);
+      place(`print${issue ? ` ${feedback.status}` : ''}${live ? ' live' : ''}`, labelX, top + GLYPH_TOP - 19, undefined, feedback.print);
       if (issue) place(`mark ${feedback.status}`, x, top + GLYPH_TOP + FONT_SIZE * 0.86, (word.end - word.start) * cell);
     }
   }
@@ -782,6 +787,8 @@ function flip() {
 function turnOver() {
   side = side === 'front' ? 'back' : 'front';
   if (side === 'front' && editor.text) checkedSlateWork = true;
+  // Reading back what was written on the slate includes the word the slate stopped in.
+  if (side === 'front') editor.finishWord();
   prefs.side = side;
   savePrefs(prefs);
   if (side === 'back' && document.activeElement === printView) textarea.focus();
@@ -1019,7 +1026,14 @@ for (const [input, key] of soundSettings) {
   });
 }
 
+liveInterliningInput.addEventListener('change', () => {
+  prefs.liveInterlining = liveInterliningInput.checked;
+  savePrefs(prefs);
+  render();
+});
+
 function openSettings() {
+  liveInterliningInput.checked = prefs.liveInterlining;
   for (const [input, key] of soundSettings) input.checked = prefs[key];
   showEmptyDots.checked = prefs.shadowDots;
   echoCellsInput.checked = echoCells;

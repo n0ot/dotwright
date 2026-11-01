@@ -396,6 +396,9 @@ input:focus-visible {
 .print {
   color: var(--muted);
 }
+.print.live {
+  font-style: italic;
+}
 .print.differs {
   color: var(--issue);
   font-weight: 550;

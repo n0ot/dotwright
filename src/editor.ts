@@ -108,6 +108,11 @@ export class BrailleEditor {
     this.onSelectionChange();
   }
 
+  /** Treats the word being written as finished, so it gets feedback, as when the page is taken out to read. */
+  finishWord(): void {
+    this.editing = false;
+  }
+
   /** Moves the caret without taking focus, to follow another view of the document. */
   placeCaret(offset: number): void {
     this.el.setSelectionRange(offset, offset);
