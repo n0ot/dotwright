@@ -17,7 +17,7 @@ Dotwright never changes your braille. There's no "fix" button: you make every co
 ## Features
 
 - **Six-key entry** with F D S J K L and the space bar, or any six keys you choose, to suit your keyboard layout.
-- **A slate** for practising slate-and-stylus writing by tapping dots on a phone or clicking with a mouse or trackpad. The page has two sides, turned over with the Front and Back buttons under the page. The front is the reading side, with print and feedback. The back is the side you write on with a real slate: the page is mirrored, lines run right to left, dots are pits, and there's no feedback until you turn the page over. The slate appears only on the back, mirrored too, with dots 1, 2 and 3 on the right. It works like a braille keyboard: set the dots, then Next cell writes them at the cursor, and Delete (Backspace on Windows and Linux) erases the cell before it, like the key on a keyboard. The keyboard works on both sides, and Settings can hide the slate.
+- **Two modes**, chosen with a switch under the page. **Brailler** mode is like a braillewriter: six keys on the keyboard write the braille as read, left to right, with print and feedback. **Slate** mode is like a slate and stylus, for practising on a phone or with a mouse or trackpad: the page is turned over and mirrored, lines run right to left, dots are pits, and there's no feedback until you switch back to Brailler, as you'd turn the paper over to check it. A slate under the page writes one cell at a time, mirrored too, with dots 1, 2 and 3 on the right: set the dots, then Next writes them at the cursor, and Delete (Backspace on Windows and Linux) erases the cell before it. In Slate mode the keyboard only moves the cursor.
 - **Screen reader support** for VoiceOver on macOS and NVDA on Windows. Moving through the braille announces each cell as its Braille ASCII character. Moving onto a word with an error says "contraction error", and keyboard commands give the print and status of the word at the cursor.
 - **A print view** for screen reader users: a hidden, read-only copy of the print, line for line. Moving through it moves the braille cursor to the same word.
 - **BRF files**: open existing ones and save your work, in the standard 40-cell, 25-line page format. Your braille is saved exactly as you wrote it, mistakes included.
@@ -25,7 +25,7 @@ Dotwright never changes your braille. There's no "fix" button: you make every co
 
 Each cell's empty dot positions are drawn as faint grey points behind the raised dots, like Duxbury's SimBraille, so it's easy to see where each dot sits. They can be turned off in Settings for raised dots only, as on paper.
 
-Press Alt+H in Dotwright for the full list of keyboard commands.
+Press Command+/ (Ctrl+/ on Windows and Linux) in Dotwright for the instructions and keyboard shortcuts.
 
 ## Limitations
 
@@ -116,16 +116,16 @@ None of these replace testing with VoiceOver and NVDA themselves.
 
 ### How it works
 
-- **Editor** (`src/editor.ts`): a native text area holding the document as Braille ASCII, line for line like a BRF file. Screen readers read it natively, so each cell is announced as its Braille ASCII character. The braille font draws those characters as dots. Lines are at most 40 cells, and pages are 25 lines.
-- **Six-key entry**: chords of F D S J K L by default, with the space bar for space. Learners can choose other keys with Alt+B (`src/keymap.ts`).
-- **Slate**: dots are held on the slate until written; the editor's slate methods then write or erase at the caret through the same edit path as the keyboard, so undo, line wrapping and feedback work the same. The back of the page is the same text area, mirrored with a CSS transform, and the slate is shown only on the back.
+- **Editor** (`src/editor.ts`): a native text area holding the document as Braille ASCII, line for line like a BRF file. Screen readers read it natively, so each cell is announced as its Braille ASCII character. The braille font draws those characters as dots. Lines are at most 40 cells, and pages are 25 lines. As on a braillewriter, a full line takes no more cells until a new line is started, and a margin bell rings when 6 cells are left (a setting). Words are never moved to the next line for the learner, since deciding whether a word fits is part of the skill; pasting or joining lines still breaks an overlong line at a space.
+- **Six-key entry**: chords of F D S J K L by default, with the space bar for space. Learners can choose other keys in Settings (`src/keymap.ts`). They write in Brailler mode only.
+- **Slate**: dots are held on the slate until written; the editor's slate methods then write or erase at the caret through the same edit path as the keyboard, so undo, line wrapping and feedback work the same. Slate mode shows the same text area, mirrored with a CSS transform (the back of the page), and turns off editing from the keyboard (`keyboardEdits`).
 - **Feedback** (`src/feedback.ts`): each word is read back to print with liblouis and translated forward again to fully contracted UEB. A word that differs is flagged as a possible issue, and a word that can't be read is reported as such. Capitalized and grade 1 passages are tracked across words.
 - **Print view**: a hidden, read-only text field after the document holding the print line for line. Its cursor and the braille cursor follow each other by word.
 - **Files** (`src/brf.ts`, `src/files.ts`): BRF files are opened and saved locally. Chrome and Edge save in place; Safari saves as a download.
 - **Recovery** (`src/recovery.ts`): a copy of the current document is kept in the browser's local storage so a refresh doesn't lose work. It is not a substitute for saving a BRF file.
 - **Offline**: `vite.config.ts` generates `sw.js` at build time, listing every built file to cache.
 
-Keyboard commands are listed in the app under Instructions (Alt+H).
+Keyboard shortcuts are listed in the app under Instructions (Command+/ or Ctrl+/). They show Command and Option on Apple devices, and Ctrl and Alt elsewhere.
 
 ### Project layout
 

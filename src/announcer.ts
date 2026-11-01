@@ -8,6 +8,7 @@ export class Announcer {
   private regions: HTMLElement[];
   private next = 0;
   private clearTimer = 0;
+  private sayTimer = 0;
 
   constructor(container: HTMLElement) {
     this.regions = [0, 1].map(() => {
@@ -24,7 +25,9 @@ export class Announcer {
     this.next = 1 - this.next;
     this.regions[this.next].textContent = '';
     region.textContent = '';
-    setTimeout(() => (region.textContent = message), 30);
+    // A message still waiting to be set is dropped, so it can't land after this one.
+    clearTimeout(this.sayTimer);
+    this.sayTimer = window.setTimeout(() => (region.textContent = message), 30);
     clearTimeout(this.clearTimer);
     this.clearTimer = window.setTimeout(() => (region.textContent = ''), 8000);
   }

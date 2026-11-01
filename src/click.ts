@@ -8,8 +8,7 @@ let noise: AudioBuffer | null = null;
  */
 export function playClick(punched: boolean): void {
   try {
-    context ??= new AudioContext();
-    if (context.state === 'suspended') void context.resume();
+    const context = audio();
     if (!noise) {
       const length = Math.floor(context.sampleRate * 0.03);
       noise = context.createBuffer(1, length, context.sampleRate);
@@ -30,4 +29,48 @@ export function playClick(punched: boolean): void {
   } catch {
     // No sound; the slate still works.
   }
+}
+
+function audio(): AudioContext {
+  context ??= new AudioContext();
+  if (context.state === 'suspended') void context.resume();
+  return context;
+}
+
+/** Plays decaying sine partials, starting together. */
+function ring(partials: [frequency: number, gain: number, seconds: number][]): void {
+  try {
+    const ctx = audio();
+    const now = ctx.currentTime;
+    for (const [frequency, level, seconds] of partials) {
+      const osc = ctx.createOscillator();
+      osc.frequency.value = frequency;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(level, now + 0.004);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + seconds);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + seconds);
+    }
+  } catch {
+    // No sound.
+  }
+}
+
+/** A small bell, like the margin bell on a braillewriter. */
+export function playBell(): void {
+  ring([
+    [1975, 0.22, 1.1],
+    [4970, 0.07, 0.5],
+    [7240, 0.03, 0.25],
+  ]);
+}
+
+/** A dull knock: nothing was written, because the line is full. */
+export function playStop(): void {
+  ring([
+    [180, 0.35, 0.12],
+    [260, 0.15, 0.08],
+  ]);
 }

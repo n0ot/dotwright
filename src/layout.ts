@@ -1,5 +1,7 @@
 export const CELLS_PER_LINE = 40;
 export const LINES_PER_PAGE = 25;
+/** Cells left on a line when the margin bell rings, as on a braillewriter. */
+export const BELL_CELLS_LEFT = 6;
 
 /**
  * The document is a braille file: lines separated by "\n", each at most 40

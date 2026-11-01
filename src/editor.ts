@@ -1,7 +1,7 @@
 import { canonicalChar, maskToChar } from './brailleAscii';
 import { keepCaretOnKeyboardFocus } from './focusCaret';
 import { DEFAULT_DOT_KEYS, typedChar } from './keymap';
-import { hardWrap, wordAt, wordsOf, type Word } from './layout';
+import { CELLS_PER_LINE, hardWrap, wordAt, wordsOf, type Word } from './layout';
 
 type EditKind = 'cell' | 'space' | 'newline' | 'delete' | 'paste' | 'cut' | 'other';
 
@@ -20,6 +20,10 @@ export interface EditorEvents {
   cell(ch: string): void;
   /** Undo or redo was requested with nothing to apply. */
   nothingTo(action: 'undo' | 'redo'): void;
+  /** A cell or space wasn't written, because the line is full. */
+  lineFull(): void;
+  /** The keyboard tried to edit while keyboard editing is off. */
+  keysOff(): void;
 }
 
 /** Identifies a key within a chord: the character it types, or " " for the space bar. */
@@ -30,14 +34,20 @@ function chordKey(e: KeyboardEvent): string | null {
 /**
  * A braille editor on a native textarea. The textarea holds the document's
  * Braille ASCII, line for line as in a BRF, so screen readers announce it
- * natively. The editor breaks lines that grow past 40 cells (see layout.ts)
- * and keeps its own undo history, since changing the text from script
+ * natively. As on a braillewriter, a full line takes no more cells or spaces
+ * until a new line is started. Other edits that push a line past 40 cells,
+ * such as pasting or joining two lines, break it (see layout.ts). It keeps its own undo history, since changing the text from script
  * invalidates the browser's.
  */
 export class BrailleEditor {
   text = '';
   /** Keys for dots 1 to 6 in Perkins-style six-key entry. */
   dotKeys = DEFAULT_DOT_KEYS;
+  /**
+   * Whether the keyboard edits. In Slate mode it doesn't: the slate writes
+   * and erases, and the keyboard only moves the cursor.
+   */
+  keyboardEdits = true;
 
   private pressed = new Set<string>();
   private chord = 0;
@@ -111,15 +121,33 @@ export class BrailleEditor {
   // The slate works like a keyboard: the learner sets dots on it, then
   // writes the cell at the caret, or erases the cell before the caret.
 
-  /** Writes a cell with these dots at the caret; no dots writes a space. */
-  slateWrite(mask: number): void {
-    if (mask === 0) {
-      this.insert(' ', 'space');
-      return;
+  /**
+   * Writes a cell with these dots at the caret; no dots writes a space.
+   * Returns false if the line is full, and nothing was written.
+   */
+  slateWrite(mask: number): boolean {
+    return mask === 0 ? this.write(' ', 'space') : this.write(maskToChar(mask), 'cell');
+  }
+
+  /** True if writing one cell at the caret would take its line past the end. */
+  lineIsFull(): boolean {
+    const { selectionStart, selectionEnd } = this.el;
+    const lineStart = this.text.lastIndexOf('\n', selectionStart - 1) + 1;
+    const next = this.text.indexOf('\n', selectionEnd);
+    const lineEnd = next < 0 ? this.text.length : next;
+    if (this.text.slice(selectionStart, selectionEnd).includes('\n')) return false;
+    return lineEnd - lineStart - (selectionEnd - selectionStart) + 1 > CELLS_PER_LINE;
+  }
+
+  /** Writes a cell or space at the caret, unless the line is full. */
+  private write(ch: string, kind: 'cell' | 'space'): boolean {
+    if (this.lineIsFull()) {
+      this.events.lineFull();
+      return false;
     }
-    const ch = maskToChar(mask);
-    this.insert(ch, 'cell');
-    this.events.cell(ch);
+    this.insert(ch, kind);
+    if (kind === 'cell') this.events.cell(ch);
+    return true;
   }
 
   /** Deletes the cell before the caret (a space or line break included), or the selection. */
@@ -187,6 +215,7 @@ export class BrailleEditor {
     const mod = e.ctrlKey || e.metaKey;
     if (mod && !e.altKey && (e.code === 'KeyZ' || e.code === 'KeyY')) {
       e.preventDefault();
+      if (!this.keyboardEdits) return this.events.keysOff();
       if (e.code === 'KeyY' || e.shiftKey) this.redo();
       else this.undo();
       return;
@@ -212,13 +241,9 @@ export class BrailleEditor {
     const chord = this.chord;
     const space = this.spaceInChord;
     this.resetChord();
-    if (chord) {
-      const ch = maskToChar(chord);
-      this.insert(ch, 'cell');
-      this.events.cell(ch);
-    } else if (space) {
-      this.insert(' ', 'space');
-    }
+    if ((chord || space) && !this.keyboardEdits) this.events.keysOff();
+    else if (chord) this.write(maskToChar(chord), 'cell');
+    else if (space) this.write(' ', 'space');
   }
 
   private resetChord(): void {
@@ -251,6 +276,12 @@ export class BrailleEditor {
   }
 
   private onBeforeInput(e: InputEvent): void {
+    // Typing, Enter, Backspace, cut, paste and undo from the keyboard or a menu.
+    if (!this.keyboardEdits && !this.executing) {
+      e.preventDefault();
+      this.events.keysOff();
+      return;
+    }
     if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') {
       e.preventDefault();
       if (e.inputType === 'historyUndo') this.undo();

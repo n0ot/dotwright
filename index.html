@@ -9,7 +9,7 @@
     <meta name="theme-color" content="#111215" media="(prefers-color-scheme: dark)" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b5bdb'/%3E%3Cg fill='%23fff'%3E%3Ccircle cx='11.5' cy='8.5' r='3'/%3E%3Ccircle cx='11.5' cy='16' r='3'/%3E%3Ccircle cx='20.5' cy='8.5' r='3'/%3E%3Ccircle cx='20.5' cy='23.5' r='3'/%3E%3C/g%3E%3Cg fill='%23fff' opacity='.35'%3E%3Ccircle cx='11.5' cy='23.5' r='3'/%3E%3Ccircle cx='20.5' cy='16' r='3'/%3E%3C/g%3E%3C/svg%3E" />
   </head>
-  <body>
+  <body class="has-slate">
     <div class="app">
       <header class="topbar">
         <div class="brand">
@@ -79,10 +79,11 @@
     </div>
 
     <!--
-      Turns the page over, and on the back, writes cells by tapping or clicking
-      dots, mirrored as on a real slate. On the front, only the switch is shown.
+      The mode switch, and in Slate mode, the slate: it writes cells by tapping
+      or clicking dots, mirrored as on a real slate. In Brailler mode, only the
+      switch is shown.
     -->
-    <section id="slate" class="slate" aria-label="Slate" hidden>
+    <section id="slate" class="slate" aria-label="Slate">
       <div class="slate-body">
         <div class="slate-cell" role="group" aria-label="Dots, mirrored">
           <button type="button" class="slate-dot" data-dot="1" aria-pressed="false" aria-label="Dot 1"></button>
@@ -97,9 +98,9 @@
         <button type="button" id="slate-newline" class="slate-key key"><span class="key-label">New line</span></button>
       </div>
       <div class="slate-bar">
-        <div class="side-switch" role="group" aria-label="Side of the page">
-          <button type="button" id="side-front" aria-pressed="true"><span class="key-label">Front</span></button>
-          <button type="button" id="side-back" aria-pressed="false"><span class="key-label">Back</span></button>
+        <div class="side-switch" role="radiogroup" aria-label="Mode">
+          <button type="button" role="radio" id="mode-brailler" aria-checked="true"><span class="key-label">Brailler</span></button>
+          <button type="button" role="radio" id="mode-slate" aria-checked="false" tabindex="-1"><span class="key-label">Slate</span></button>
         </div>
         <p id="slate-position" class="slate-position"></p>
       </div>
@@ -109,81 +110,105 @@
       <h2 id="settings-title">Settings</h2>
       <label class="check"><input type="checkbox" id="show-empty-dots" /> Show empty dot positions</label>
       <label class="check"><input type="checkbox" id="echo-cells" /> Announce each cell as it is entered</label>
-      <h3>Slate</h3>
-      <label class="check"><input type="checkbox" id="show-slate" /> Show the slate and the Front and Back buttons</label>
-      <label class="check"><input type="checkbox" id="slate-clicks" /> Click when a dot is punched</label>
-      <p class="setting-row">
-        <span id="settings-keys"></span>
-        <button type="button" id="settings-change-keys">Change braille keys…</button>
-      </p>
-      <form method="dialog" class="dialog-actions"><button class="primary">Done</button></form>
+      <label class="check"><input type="checkbox" id="margin-bell" /> Ring a bell near the end of a line</label>
+      <label class="check"><input type="checkbox" id="slate-clicks" /> Click when a dot is punched on the slate</label>
+      <h3>Braille keys</h3>
+      <form id="keys-form" class="keys-setting">
+        <label for="dot-keys">Keys for dots 1 to 6, in order</label>
+        <div class="keys-row">
+          <input
+            id="dot-keys"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            aria-describedby="dot-keys-error"
+          />
+          <button type="button" id="keys-default">Use F D S J K L</button>
+        </div>
+        <p id="dot-keys-error" class="field-error" role="alert"></p>
+      </form>
+      <form method="dialog" id="settings-done" class="dialog-actions"><button class="primary">Done</button></form>
     </dialog>
 
     <dialog id="help" aria-labelledby="help-title">
       <h2 id="help-title" tabindex="-1" autofocus>Instructions</h2>
-      <h3>Writing</h3>
-      <p>Press the keys of a cell together, then release them.</p>
-      <p id="current-keys"></p>
-      <ul>
-        <li><kbd>Enter</kbd> starts a new line. Space or Enter finishes a word, and feedback for it appears then.</li>
-        <li>Lines are 40 cells. A word that would pass cell 40 moves to a new line; pages are 25 lines.</li>
-        <li>Arrow keys, Backspace, Delete, Shift selection, cut, copy and paste work as usual.</li>
-        <li><kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> undoes; add <kbd>Shift</kbd> to redo.</li>
-      </ul>
-      <h3>Slate</h3>
       <p>
-        The page has two sides, and the Front and Back buttons under the page turn it over.
-        <kbd>Alt</kbd>+<kbd>F</kbd> also turns it over. The front is the reading side, with print
-        and feedback. The back is the side you write on with a real slate: the page is
-        mirrored, lines run from right to left, dots are pits, and there's no feedback until you
-        turn the page over.
+        Dotwright is for practising writing braille, with feedback on contractions as you go.
+        Choose how to write with the switch under the page.
+      </p>
+
+      <h3>Brailler mode</h3>
+      <p>
+        Write the way you would on a braillewriter, with six keys on your keyboard. Press the keys
+        of a cell together, then let go. The braille appears as you'd read it, with the print over
+        each word. <span id="current-keys"></span>
       </p>
       <p>
-        On the back, a slate under the page writes one cell at a time, at the cursor. It's mirrored
-        too: dots 1, 2 and 3 are on the right. Tap or click dots to set them, and again to take them
-        out. Next cell writes the dots at the cursor and moves on; with no dots set, it writes a
-        space. <span class="delete-key-name">Delete</span> erases the cell before the cursor, like
-        the key on a keyboard, and can be held down; if you've set dots but not written them yet,
-        it clears those first. New line starts the next line. Tap or click the page to move the cursor.
+        Space and Enter work as on a brailler, and finishing a word with either shows its feedback.
+        Backspace, the arrow keys and undo work as usual. You can change the six keys in Settings.
       </p>
-      <p>The keyboard works on both sides. Settings can hide the slate and the Front and Back buttons.</p>
-      <h3>Braille keys</h3>
+
+      <h3>Slate mode</h3>
       <p>
-        <kbd>Alt</kbd>+<kbd>B</kbd> changes which keys enter dots 1 to 6, to suit your keyboard
-        layout. The space bar always enters a space.
+        Write the way you would with a slate and stylus. The page is turned over, as on a real
+        slate: it's mirrored, lines run from right to left, and dots are pressed in. There's no
+        feedback until you switch back to Brailler mode, just as you'd take the paper out and turn
+        it over to check it.
       </p>
-      <p><button type="button" id="change-keys">Change braille keys</button></p>
+      <p>
+        Tap or click dots on the slate under the page to set them, then Next to write the cell and
+        move on. Next with no dots writes a space. <span class="delete-key-name">Delete</span>
+        takes back the last cell, and New line starts the next line. Tap the page to move the
+        cursor. The keyboard only moves the cursor in Slate mode, so you practise with the slate.
+      </p>
+      <p class="small-screen-only">On a phone, use Slate mode, unless you have a keyboard connected.</p>
+
+      <h3>Lines and pages</h3>
+      <p>
+        Lines are 40 cells and pages are 25 lines, as in a BRF file. As on a brailler, a bell rings
+        near the end of a line, and a full line takes nothing more until you start a new one. If a
+        word doesn't fit, delete it and write it on the next line.
+      </p>
+
       <h3>Feedback</h3>
-      <ul>
-        <li>Words with a contraction error are underlined with a wavy line. Moving onto one announces "contraction error", and moving off it announces "out of contraction error".</li>
-        <li><kbd>Alt</kbd>+<kbd>W</kbd>: print and contraction status of the word at the cursor.</li>
-        <li><kbd>Alt</kbd>+<kbd>R</kbd>: show the correct form of the word at the cursor. <kbd>Escape</kbd> hides it. With a mouse, click the word and use Show correct form.</li>
-        <li><kbd>Alt</kbd>+<kbd>N</kbd>: next contraction error; <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>: previous.</li>
-        <li>
-          <kbd>Tab</kbd> from the document goes to the print view: a read-only copy of the print
-          interlining, line for line. Moving through it moves the braille cursor to the same word,
-          and the commands above work there too.
-        </li>
-        <li><kbd>Alt</kbd>+<kbd>T</kbd>: turn feedback (print and contraction indicators) on or off.</li>
-      </ul>
-      <h3>Document</h3>
-      <p>On a small screen, New, Open, Save, Settings and these instructions are in the Menu button at the top.</p>
-      <ul>
-        <li><kbd>Alt</kbd>+<kbd>L</kbd>: page, line and cell of the cursor.</li>
-        <li>
-          <kbd>Alt</kbd>+<kbd>G</kbd>: go to a line and cell. Lines are counted from the start of
-          the document, so line 26 is the first line of page 2.
-        </li>
-        <li><kbd>Alt</kbd>+<kbd>K</kbd>: turn announcing each entered cell on or off. This and showing empty dot positions are also in Settings.</li>
-        <li><kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>O</kbd>: open a BRF file. <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd>: save a BRF file.</li>
-        <li><kbd>Alt</kbd>+<kbd>H</kbd>: these instructions.</li>
-      </ul>
-      <h3>Saving and recovery</h3>
       <p>
-        Save a BRF file to keep your work. This browser also keeps a recovery copy in case the page
-        is refreshed, but it stays only in this browser on this device and is lost if browser data
-        is cleared. Your braille never leaves your device.
+        In Brailler mode, a word with a contraction error is underlined with a wavy line, and the
+        print over it shows how it reads. Click or tap the word to see the correct form. With a
+        screen reader, moving onto the word says "contraction error".
       </p>
+      <p>
+        <kbd>Tab</kbd> from the braille goes to the print view: the print of each line, to read
+        through. Moving in it moves the braille cursor to the same word.
+      </p>
+
+      <h3>Saving your work</h3>
+      <p>
+        Save a BRF file to keep your work. Dotwright also keeps a copy in this browser in case the
+        page is closed or refreshed, but only in this browser on this device, and it's lost if
+        browser data is cleared. Your braille never leaves your device.
+      </p>
+      <p class="small-screen-only">On a phone, New, Open, Save, Settings and these instructions are in the menu at the top.</p>
+
+      <h3>Keyboard shortcuts</h3>
+      <table class="shortcuts">
+        <thead>
+          <tr><th scope="col">Action</th><th scope="col">Keys</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>These instructions</td><td><kbd class="mod">Ctrl</kbd>+<kbd>/</kbd></td></tr>
+          <tr><td>Switch between Brailler and Slate</td><td><kbd class="alt">Alt</kbd>+<kbd>M</kbd></td></tr>
+          <tr><td>Open a BRF file</td><td><kbd class="mod">Ctrl</kbd>+<kbd>O</kbd></td></tr>
+          <tr><td>Save</td><td><kbd class="mod">Ctrl</kbd>+<kbd>S</kbd></td></tr>
+          <tr><td>Undo, redo</td><td><kbd class="mod">Ctrl</kbd>+<kbd>Z</kbd>, <kbd class="mod">Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td></tr>
+          <tr><td>Print and feedback for the word at the cursor</td><td><kbd class="alt">Alt</kbd>+<kbd>W</kbd></td></tr>
+          <tr><td>Show the correct form of the word (<kbd>Escape</kbd> hides it)</td><td><kbd class="alt">Alt</kbd>+<kbd>R</kbd></td></tr>
+          <tr><td>Next or previous contraction error</td><td><kbd class="alt">Alt</kbd>+<kbd>N</kbd>, <kbd class="alt">Alt</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd></td></tr>
+          <tr><td>Feedback on or off</td><td><kbd class="alt">Alt</kbd>+<kbd>T</kbd></td></tr>
+          <tr><td>Where the cursor is: page, line and cell</td><td><kbd class="alt">Alt</kbd>+<kbd>L</kbd></td></tr>
+          <tr><td>Go to a line and cell (line 26 is the first line of page 2)</td><td><kbd class="alt">Alt</kbd>+<kbd>G</kbd></td></tr>
+          <tr><td>Announce each cell as it's written, on or off</td><td><kbd class="alt">Alt</kbd>+<kbd>K</kbd></td></tr>
+        </tbody>
+      </table>
       <form method="dialog" class="dialog-actions"><button class="primary">Close</button></form>
     </dialog>
 
@@ -215,25 +240,6 @@
       </form>
     </dialog>
 
-    <dialog id="keys-dialog" aria-labelledby="keys-title">
-      <h2 id="keys-title">Braille keys</h2>
-      <form id="keys-form">
-        <label for="dot-keys">Keys for dots 1 to 6, in order</label>
-        <input
-          id="dot-keys"
-          autocomplete="off"
-          autocapitalize="off"
-          spellcheck="false"
-          aria-describedby="dot-keys-error"
-        />
-        <p id="dot-keys-error" class="field-error" role="alert"></p>
-        <p>
-          <button type="submit" class="primary">Save</button>
-          <button type="button" id="keys-default">Use f d s j k l</button>
-          <button type="button" id="keys-cancel">Cancel</button>
-        </p>
-      </form>
-    </dialog>
 
     <div id="announcements"></div>
     <script type="module" src="/src/main.ts"></script>

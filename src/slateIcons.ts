@@ -1,8 +1,9 @@
 /**
  * Icons for the slate's buttons, drawn as small slate cells so each one shows
  * what the button does: where the stylus goes next, and which cell it lands
- * on (highlighted). They're drawn as on the front of the page; on the back,
- * style.css mirrors the movement icons along with the slate.
+ * on (highlighted). They're drawn as read; in Slate mode, style.css mirrors
+ * the movement icons along with the slate. The two modes have pictures of a
+ * braillewriter and a slate.
  *
  * The icons are decorative: each button has its own accessible name.
  */
@@ -53,40 +54,46 @@ const NEW_LINE = svg(
     '<path d="M36.5 4v20.5a6 6 0 0 1-6 6H14m4-4-4 4 4 4"/>',
 );
 
-/** A sheet of paper; the back has its top corner turned over. */
-const PAGE_FRONT = '<rect x="7" y="2" width="26" height="36" rx="3" fill="currentColor" fill-opacity="0.07"/>';
-const PAGE_BACK =
-  '<path d="M7 5a3 3 0 0 1 3-3h14l9 9v24a3 3 0 0 1-3 3H10a3 3 0 0 1-3-3Z" fill="currentColor" fill-opacity="0.07"/>' +
-  '<path d="M24 2v6a3 3 0 0 0 3 3h6" fill="currentColor" fill-opacity="0.25"/>';
+/**
+ * A braillewriter, from the front: a sheet coming out of the top with a raised
+ * cell on it, a knob at each end, and the row of keys, three each side of the
+ * space bar. It says "six keys write here".
+ */
+const BRAILLER = svg(
+  // The paper, with "f" raised on it.
+  '<path d="M13 14V5.5a1.5 1.5 0 0 1 1.5-1.5h11a1.5 1.5 0 0 1 1.5 1.5V14" fill="var(--surface)"/>' +
+    '<circle cx="18" cy="8" r="1.4" fill="currentColor" stroke="none"/>' +
+    '<circle cx="18" cy="11.5" r="1.4" fill="currentColor" stroke="none"/>' +
+    '<circle cx="22" cy="8" r="1.4" fill="currentColor" stroke="none"/>' +
+    // The body, sloping in towards the top, and its knobs.
+    '<path d="M8 14h24l3 15a3 3 0 0 1-3 3.5H8A3 3 0 0 1 5 29Z" fill="currentColor" fill-opacity="0.1"/>' +
+    '<circle cx="5" cy="17" r="2.6" fill="currentColor" stroke="none"/>' +
+    '<circle cx="35" cy="17" r="2.6" fill="currentColor" stroke="none"/>' +
+    // The keys.
+    [9.5, 13.5, 17.5, 22.5, 26.5, 30.5].map((x) => `<circle cx="${x}" cy="24.5" r="1.7" fill="currentColor" stroke="none"/>`).join('') +
+    '<path d="M16.5 29h7" stroke-width="2.2"/>',
+);
 
 /**
- * One cell, "f" (dots 1-2-4), which looks different mirrored: as read on the
- * front, and as punched on the back.
+ * A slate: a guide with two rows of cell windows, and a stylus resting across
+ * it. It says "punch cells here, one at a time".
  */
-function dotPositions(mirrored: boolean): [number, number][] {
-  return [1, 2, 4].map((d) => {
-    const left = d <= 3 !== mirrored;
-    return [left ? 15.5 : 24.5, 15 + ((d - 1) % 3) * 8];
-  });
-}
-
-/** A raised dot, lit from the top left. */
-const bump = ([x, y]: [number, number]) =>
-  `<circle cx="${x}" cy="${y}" r="3.2" fill="currentColor" stroke="none"/>` +
-  `<circle cx="${x - 1}" cy="${y - 1.1}" r="1.1" fill="var(--surface)" stroke="none" opacity="0.75"/>`;
-
-/** A dot pressed in: a hollow, in shadow under its top edge. */
-const pit = ([x, y]: [number, number]) =>
-  `<circle cx="${x}" cy="${y}" r="3.2" fill="currentColor" fill-opacity="0.2" stroke="none"/>` +
-  `<path d="M${x - 3.2} ${y}a3.2 3.2 0 0 1 6.4 0a3.2 1.8 0 0 0-6.4 0Z" fill="currentColor" fill-opacity="0.8" stroke="none"/>`;
-
-const FRONT = svg(PAGE_FRONT + dotPositions(false).map(bump).join(''));
-const BACK = svg(PAGE_BACK + dotPositions(true).map(pit).join(''));
+const SLATE = svg(
+  // The guide, hinged at the left, with two rows of cell windows.
+  '<rect x="2" y="16" width="36" height="21" rx="2.5" fill="currentColor" fill-opacity="0.1"/>' +
+    '<path d="M7 16v21" stroke-width="1.6"/>' +
+    [10.5, 16, 21.5, 27, 32.5]
+      .flatMap((x) => [19.5, 28].map((y) => `<rect x="${x}" y="${y}" width="3.4" height="5.6" rx="1.2" fill="var(--surface)" stroke-width="1.5"/>`))
+      .join('') +
+    // The stylus, leaning in like a pen, its point in a cell: a short, thick handle and a steel point.
+    '<path d="M25.2 22.5l4.3-5" stroke-width="1.6"/>' +
+    '<path d="M30.3 16.5l5.4-6.3" stroke-width="5.4"/>'
+);
 
 export const SLATE_ICONS: Record<string, string> = {
   'slate-next': NEXT,
   'slate-delete': DELETE,
   'slate-newline': NEW_LINE,
-  'side-front': FRONT,
-  'side-back': BACK,
+  'mode-brailler': BRAILLER,
+  'mode-slate': SLATE,
 };

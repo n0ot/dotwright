@@ -4,7 +4,7 @@ October 2026. A review of how Dotwright looks and works on desktop, iPad and iPh
 
 ## Research
 
-**Slate writing.** The difficulty of slate writing is mostly in the learner's head. The Braille Authority of North America and NFB writers point out that it isn't "backwards" writing: a word is spelled in the same order, and only the direction across the page and the dot positions change. Teachers keep a braille alphabet in real dots nearby, have learners write without looking, and check work without taking the paper out of the slate. Dotwright's Front / Back design matches this: the back is what she punches, and the front is the check.
+**Slate writing.** The difficulty of slate writing is mostly in the learner's head. The Braille Authority of North America and NFB writers point out that it isn't "backwards" writing: a word is spelled in the same order, and only the direction across the page and the dot positions change. Teachers keep a braille alphabet in real dots nearby, have learners write without looking, and check work without taking the paper out of the slate. Dotwright's two modes match this: Slate mode is the back she punches, and Brailler mode is the front, the check. (They were called Front and Back until November 2026; see slate-input.md.)
 
 **Sighted adult learners.** A 2025 interview study of sighted adults learning braille (mostly teachers of blind students, [arXiv 2512.03398](https://arxiv.org/html/2512.03398)) found:
 
@@ -56,7 +56,7 @@ The most serious problems first.
 
 ## Things to watch when she tries it
 
-- Does she find Back on the phone from the hint, without being told?
+- Does she find Slate on the phone from the hint, without being told? Do the Brailler and Slate pictures read as what they are?
 - Does the tall Next key get used without hesitation? Does she ever press Delete by mistake?
 - In landscape, does the right-hand slate feel natural, or does she want it on the left?
 - Is the slate frame helpful, or is it decoration she doesn't notice?

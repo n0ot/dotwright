@@ -181,3 +181,37 @@ The page is a text field, not paper, so writing each dot straight into the page 
 ### Delete
 
 The erase button became a Delete key, modelled on the one on an iPhone keyboard: a grey key with the delete symbol, mirrored to point right. It's called Delete on Apple devices and Backspace on Windows and Linux. Holding it down keeps deleting, faster after a moment. Screen readers hear just the cell deleted ("d", "space", "new line"), as with the real key; Dotwright has to say it, because a screen reader on a button doesn't follow changes in the text field.
+
+## The end of the line (November 2026)
+
+A word that didn't fit used to move to the next line by itself, which a slate or a braillewriter never does. Deciding whether a word fits, and what to do when it doesn't, is part of writing braille, so Dotwright now works like a braillewriter:
+
+- A full line (40 cells) takes no more cells or spaces. Trying gives a dull knock, a small shake of the cursor, and "End of line" for screen readers.
+- On the slate, Next writes the last cell as usual. Then, as on a real slate, there's no cell left to punch: the dots and Next are dimmed (`aria-disabled`, so screen readers still find them, as "dimmed"), New line turns blue, and the position says "End of line". Tapping a dimmed dot gives the knock. They come back when there's room: after New line, Delete, or moving the cursor to a line with room.
+- Enter, or New line on the slate, starts the next line. If dots were set before the cursor was moved to a full line, New line writes them at the start of the new line.
+- A bell rings when the cell that leaves 6 cells on the line is written, like a Perkins's margin bell. The slate's position turns blue for the last 6 cells, which also helps when the phone is silenced. The bell can be turned off in Settings.
+
+A word left split across two lines reads as nonsense on the front, as it would on paper. A more forgiving mode for people who only want to type braille could come later.
+
+## The braille keys write on the front only (November 2026)
+
+On the back of the page, writing is with the slate, as on paper; the braille keys don't write there. Pressing them gives the knock, shakes the cursor, pulses the slate's cell to point to it, and tells screen readers "The braille keys write on the front of the page. On the back, write with the slate." This replaces "Slate and keyboard together" above for the back of the page.
+
+The braille keys are now a text field in Settings, not a separate dialog on Alt+B, since they're rarely changed. Enter or Done saves them; Escape leaves them as they were.
+
+## Brailler and Slate modes (November 2026)
+
+Front and Back became two modes, named for the tools they stand in for:
+
+- **Brailler** (the front): write with six keys, as on a braillewriter, reading the braille as you go, with feedback.
+- **Slate** (the back): write with the slate, on the page mirrored, with no feedback until you switch to Brailler, as you'd take the paper out and turn it over.
+
+Each has a picture beside its name: a braillewriter with paper coming out of the top, and a slate with a stylus writing in it. Pictures of these tools aren't universal symbols, but they're familiar to braille learners, and the names are always next to them. The Brailler picture also says that six keys write there; the slate says that the slate does.
+
+- The switch is a two-option segmented control, not one button that changes, because a button that changes leaves it unclear whether it shows the mode you're in or the one you'll get. The chosen mode is highlighted, not dimmed: dimmed reads as unavailable.
+- For keyboards and screen readers it's a radio group: one tab stop, on the chosen mode, read as "Brailler, selected"; the arrow keys switch. Alt+M (Option+M on a Mac) switches from anywhere, replacing Alt+F.
+- In Slate mode the keyboard only moves the cursor. The braille keys, Space, Enter, Backspace, Delete, cut, paste and undo all give the knock and "In Slate mode, write with the slate." One rule, with no exceptions to learn; the slate has its own Delete, as a real slate has an eraser.
+- After the first line in Slate mode, the empty line under it says "To read what you wrote, with feedback, switch to Brailler, below", until she's done that once.
+- The setting to hide the slate was removed: Brailler mode is the default, and the slate only appears when Slate is chosen.
+
+The instructions were rewritten around the two modes, shorter and friendlier, with a table of keyboard shortcuts at the end. Keys are named for the device: Command and Option on Apple devices, Ctrl and Alt elsewhere. Command+/ (Ctrl+/) opens them, as for the shortcuts list in Google Docs and Slack; Alt+H still works.

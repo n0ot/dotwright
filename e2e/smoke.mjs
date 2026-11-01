@@ -89,12 +89,18 @@ for (const browserType of [chromium, webkit]) {
   check('feedback off hides print, marks and the popover', (await page.locator('.print, .mark').count()) === 0 && await page.locator('#word-popover').isHidden());
   await page.keyboard.press('Alt+KeyT');
 
-  // Wrapping: a long paragraph must break only at spaces, within 40 cells.
+  // A full line takes nothing more, as on a braillewriter, until a new line is started.
   await page.keyboard.press(LINE_END);
-  for (let i = 0; i < 6; i++) await type(page, '!c!c!c ');
-  const lines = (await ta.inputValue()).split('\n');
-  check('lines wrap at 40 cells', lines.length > 1 && lines.every((l) => l.trimEnd().length <= 40), JSON.stringify(lines));
-  check('no word split across lines', lines.slice(1).every((l) => l.startsWith('!c!c!c')), JSON.stringify(lines));
+  const lineCount = (await ta.inputValue()).split('\n').length;
+  for (let i = 0; i < 7; i++) await type(page, '!c!c!c ');
+  let lines = (await ta.inputValue()).split('\n');
+  await page.waitForTimeout(80);
+  check('a full line stops at 40 cells', lines.length === lineCount && lines.at(-1).length === 40, JSON.stringify(lines));
+  check('writing past the end says so', (await lastSaid(page)) === 'End of line', await lastSaid(page));
+  await page.keyboard.press('Enter');
+  await type(page, '!c');
+  lines = (await ta.inputValue()).split('\n');
+  check('Enter starts a new line to carry on', lines.length === lineCount + 1 && lines.at(-1) === '!c', JSON.stringify(lines));
 
   await page.keyboard.press('Meta+KeyZ');
   await page.keyboard.press('Control+KeyZ');
@@ -185,15 +191,17 @@ for (const browserType of [chromium, webkit]) {
   check('Alt+G from the print view stays there', (await caret()) === 13 && await page.evaluate(() => document.activeElement.id === 'print-view'), String(await caret()));
   await page.keyboard.press('Shift+Tab');
 
-  // Custom braille keys typed in order into a field, punctuation included.
-  await page.keyboard.press('Alt+KeyB');
-  await page.keyboard.type('qwe');
-  await page.keyboard.press('Enter');
-  check('rejects fewer than 6 keys', (await page.locator('#dot-keys-error').textContent()).includes('6 keys'));
+  // Custom braille keys typed in order into a field in Settings, punctuation included.
+  const openSettings = async () => { await page.evaluate(() => document.querySelector('#show-settings').click()); await page.waitForSelector('#settings-dialog[open]'); };
+  await openSettings();
+  check('Settings shows the braille keys', (await page.inputValue('#dot-keys')) === 'f d s j k l', await page.inputValue('#dot-keys'));
+  await page.fill('#dot-keys', 'qwe');
+  await page.press('#dot-keys', 'Enter');
+  check('rejects fewer than 6 keys, and stays open', (await page.locator('#dot-keys-error').textContent()).includes('6 keys') && await page.locator('#settings-dialog[open]').count() === 1);
   await page.fill('#dot-keys', 'd c x h , .');
-  await page.keyboard.press('Enter');
+  await page.press('#dot-keys', 'Enter');
   await page.waitForTimeout(80);
-  check('saves dot keys', (await announced(page)).includes('Braille keys saved'), await announced(page));
+  check('Enter saves dot keys and closes Settings', (await announced(page)).includes('Braille keys saved') && await page.locator('#settings-dialog[open]').count() === 0, await announced(page));
   await page.click('#new-doc');
   // Dots 1 and 5 (d and ,) make "e".
   await page.keyboard.down('d'); await page.keyboard.down(','); await page.keyboard.up('d'); await page.keyboard.up(',');
@@ -203,24 +211,37 @@ for (const browserType of [chromium, webkit]) {
   await page.waitForFunction(() => !document.querySelector('#editor').disabled);
   await page.keyboard.press('d');
   check('custom keys persist', (await ta.inputValue()) === 'e a', await ta.inputValue());
-  await page.keyboard.press('Alt+KeyB');
+  await openSettings();
+  await page.fill('#dot-keys', 'x');
+  await page.keyboard.press('Escape');
+  await openSettings();
+  check('Escape leaves the keys as they were', (await page.inputValue('#dot-keys')) === 'd c x h , .', await page.inputValue('#dot-keys'));
   await page.click('#keys-default');
+  await page.click('#settings-done button');
   check('no instructions on the page', !(await page.locator('body > :not(dialog)').allInnerTexts()).join(' ').match(/press|substitute|F D S/i));
 
   // Slate: tap dots to write the cell at the cursor; keyboard focus stays in the document.
   await page.click('#new-doc');
   const punch = async (...dots) => { for (const d of dots) await page.click(`.slate-dot[data-dot="${d}"]`); };
   const pressed = () => page.evaluate(() => [...document.querySelectorAll('.slate-dot[aria-pressed="true"]')].map((b) => b.dataset.dot).join(''));
-  check('front shows only the Front and Back buttons',
-    await page.locator('#side-back').isVisible() && await page.locator('.slate-cell').isHidden() && await page.locator('#slate-next').isHidden());
-  check('no slate cursor on the front', (await page.locator('.slate-cursor').count()) === 0);
-  await page.click('#side-back');
+  check('Brailler mode shows only the mode switch',
+    await page.locator('#mode-slate').isVisible() && await page.locator('.slate-cell').isHidden() && await page.locator('#slate-next').isHidden());
+  check('no slate cursor in Brailler mode', (await page.locator('.slate-cursor').count()) === 0);
+  check('the mode switch is a radio group with one tab stop',
+    (await page.getAttribute('.side-switch', 'role')) === 'radiogroup' &&
+    (await page.getAttribute('#mode-brailler', 'aria-checked')) === 'true' &&
+    (await page.getAttribute('#mode-slate', 'tabindex')) === '-1');
+  await page.focus('#mode-brailler');
+  await page.keyboard.press('ArrowRight');
   await page.waitForTimeout(300);
-  check('back shows the slate', await page.locator('.slate-cell').isVisible() && (await page.locator('.slate-cursor').count()) === 1);
+  check('arrow keys switch to Slate mode, and move focus with it',
+    (await page.getAttribute('#mode-slate', 'aria-checked')) === 'true' && await page.evaluate(() => document.activeElement.id === 'mode-slate'));
+  await page.focus('#editor');
+  check('Slate mode shows the slate', await page.locator('.slate-cell').isVisible() && (await page.locator('.slate-cursor').count()) === 1);
   const dotColumn = () => page.evaluate(() => getComputedStyle(document.querySelector('.slate-dot[data-dot="1"]')).gridColumnStart);
   check('slate is mirrored', (await dotColumn()) === '2', await dotColumn());
   check('screen readers hear that the dots are mirrored', (await page.getAttribute('.slate-cell', 'aria-label')) === 'Dots, mirrored');
-  check('Back shows the page mirrored and without print', await page.locator('#sheet.back').count() === 1);
+  check('Slate mode shows the page mirrored and without print', await page.locator('#sheet.back').count() === 1);
   await punch(1, 4);
   check('dots are set on the slate, not yet written', (await ta.inputValue()) === '' && (await pressed()) === '14', `${await ta.inputValue()} ${await pressed()}`);
   check('preview shows where the cell will go', (await page.locator('.slate-preview').textContent()) === 'c');
@@ -249,37 +270,63 @@ for (const browserType of [chromium, webkit]) {
   await page.click('#slate-next');
   await page.click('#slate-next');
   await page.keyboard.down('f'); await page.keyboard.up('f');
-  check('keyboard works alongside the slate', (await ta.inputValue()) === 'ac a', JSON.stringify(await ta.inputValue()));
+  await page.waitForTimeout(80);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+KeyZ' : 'Control+KeyZ');
+  check('Enter, Backspace and undo don\'t edit in Slate mode', (await ta.inputValue()) === 'ac ', JSON.stringify(await ta.inputValue()));
+  await page.waitForTimeout(80);
+  check('braille keys don\'t write in Slate mode', (await ta.inputValue()) === 'ac ' && (await lastSaid(page)).includes('write with the slate'), `${JSON.stringify(await ta.inputValue())} ${await lastSaid(page)}`);
+  await punch(1);
+  await page.click('#slate-next');
   await punch(2, 3, 4, 6);
   await page.click('#slate-newline');
   check('New line writes the dots set, then starts a line', (await ta.inputValue()) === 'ac a!\n', JSON.stringify(await ta.inputValue()));
   check('slate position shown', (await page.locator('#slate-position').textContent()).startsWith('Line 2'));
   await page.click('#slate-delete');
   check('Delete deletes a line break', (await ta.inputValue()) === 'ac a!', JSON.stringify(await ta.inputValue()));
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+KeyZ' : 'Control+KeyZ');
-  check('undo brings back what Delete deleted', (await ta.inputValue()) === 'ac a!\n', JSON.stringify(await ta.inputValue()));
+  await page.click('#slate-newline');
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
+  for (let i = 0; i < 39; i++) { await punch(1); await page.click('#slate-next'); }
+  const dotsOff = () => page.evaluate(() => [...document.querySelectorAll('.slate-dot')].every((b) => b.getAttribute('aria-disabled') === 'true'));
+  const line2 = async () => (await ta.inputValue()).split('\n')[1];
+  await punch(1, 2);
+  await page.click('#slate-next');
+  check('Next writes the last cell of a line', (await line2()) === 'a'.repeat(39) + 'b', JSON.stringify(await line2()));
+  check('slate position says when the line is full', (await page.locator('#slate-position').textContent()).includes('End of line'));
+  check('a full line dims the dots and Next', await dotsOff() && (await page.getAttribute('#slate-next', 'aria-disabled')) === 'true');
+  await page.click('.slate-dot[data-dot="1"]', { force: true });
+  await page.waitForTimeout(80);
+  check('dimmed dots set nothing, and say why', (await pressed()) === '' && (await lastSaid(page)) === 'End of line', `${await pressed()} ${await announced(page)}`);
+  await page.click('#slate-delete');
+  check('Delete makes room, and the dots come back', (await line2()).length === 39 && !(await dotsOff()));
+  await punch(1, 2);
+  await page.click('#slate-next');
+  await page.click('#slate-newline');
+  check('New line brings the dots back', (await ta.inputValue()).endsWith('b\n') && !(await dotsOff()), JSON.stringify(await ta.inputValue()));
 
-  check('side switch shows the back', (await page.getAttribute('#side-back', 'aria-pressed')) === 'true');
+  check('mode switch shows Slate', (await page.getAttribute('#mode-slate', 'aria-checked')) === 'true');
   await page.reload();
   await page.waitForFunction(() => !document.querySelector('#editor').disabled);
-  check('side is remembered', await page.locator('#sheet.back').count() === 1);
+  check('mode is remembered', await page.locator('#sheet.back').count() === 1);
   await page.keyboard.press('Alt+KeyW');
   await page.waitForTimeout(80);
-  check('word feedback explains the back', (await lastSaid(page)).includes('back of the page'), await lastSaid(page));
-  await page.keyboard.press('Alt+KeyF');
+  check('word feedback explains Slate mode', (await lastSaid(page)).includes('no feedback in Slate mode'), await lastSaid(page));
+  await page.keyboard.press('Alt+KeyM');
   await page.waitForTimeout(300);
-  check('Alt+F flips back to the front, with feedback on what was written',
+  check('Alt+M switches to Brailler mode, with feedback on what was written',
     await page.locator('#sheet.back').count() === 0 && (await page.locator('.print').count()) > 0 && await page.locator('.slate-cell').isHidden());
 
-  await page.click('#show-settings');
-  await page.click('#show-slate');
-  await page.keyboard.press('Escape');
-  check('Settings hide the slate', await page.locator('#slate').isHidden());
-  await page.reload();
-  await page.waitForFunction(() => !document.querySelector('#editor').disabled);
-  check('hidden slate stays hidden', await page.locator('#slate').isHidden());
-  await page.click('#show-settings');
-  await page.click('#show-slate');
+  check('Brailler mode writes with the keyboard again', await (async () => {
+    const before = await ta.inputValue();
+    await page.keyboard.press('Enter');
+    return (await ta.inputValue()) === before + '\n';
+  })());
+
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Slash' : 'Control+Slash');
+  check('Command or Ctrl + / opens the instructions', await page.locator('#help[open]').count() === 1);
+  const modKey = await page.locator('#help kbd.mod').first().textContent();
+  check('instructions name the keys for this system', modKey === (process.platform === 'darwin' ? 'Command' : 'Ctrl'), modKey);
   await page.keyboard.press('Escape');
 
   check('no page errors', errors.length === 0, errors.join('; '));
@@ -298,7 +345,7 @@ for (const browserType of [chromium, webkit]) {
   await page.goto(URL);
   await page.waitForFunction(() => !document.querySelector('#editor').disabled);
   check('no on-screen keyboard for the page', (await page.getAttribute('#editor', 'inputmode')) === 'none');
-  await page.tap('#side-back');
+  await page.tap('#mode-slate');
   await page.waitForTimeout(300);
   for (const d of [2, 3, 4, 6]) await page.tap(`.slate-dot[data-dot="${d}"]`);
   await page.tap('#slate-next');
@@ -308,17 +355,20 @@ for (const browserType of [chromium, webkit]) {
   const cursor = await page.locator('.slate-cursor').boundingBox();
   check('cursor is above the slate', cursor.y + cursor.height <= slateTop, `${cursor.y} ${slateTop}`);
   check('empty page has no hint once written', (await page.locator('.empty-hint').count()) === 0);
-  await page.tap('#side-front');
+  await page.tap('#slate-newline');
+  check('after a line on the slate, a hint says how to read it back', ((await page.locator('.empty-hint').textContent()) ?? '').includes('Brailler'));
+  await page.tap('#mode-brailler');
   await page.waitForTimeout(300);
-  check('front has no slate panel, just the switch',
+  check('Brailler mode has no slate panel, just the switch',
     await page.evaluate(() => getComputedStyle(document.querySelector('#slate')).backgroundImage === 'none' && getComputedStyle(document.querySelector('#slate')).borderTopWidth === '0px'));
   const sheetBottom = (await page.locator('#sheet').boundingBox());
   const switchBox = await page.locator('.side-switch').boundingBox();
   check('page runs down behind the switch', sheetBottom.y + sheetBottom.height > switchBox.y + switchBox.height, `${JSON.stringify(sheetBottom)} ${JSON.stringify(switchBox)}`);
   const cleared = await page.waitForFunction(() => [...document.querySelectorAll('#announcements div')].every((d) => d.textContent === ''), null, { timeout: 10000 }).then(() => true, () => false);
   check('spoken announcements are cleared from the page', cleared);
-  await page.tap('#side-back');
+  await page.tap('#mode-slate');
   await page.waitForTimeout(300);
+  check('once read back, the hint goes', (await page.locator('.empty-hint').count()) === 0);
 
   // On a phone, the document commands are in a menu.
   check('document commands are in a menu', await page.locator('#new-doc').isHidden() && await page.locator('#menu-button').isVisible());
@@ -340,8 +390,8 @@ for (const browserType of [chromium, webkit]) {
   const lpage = await land.newPage();
   await lpage.goto(URL);
   await lpage.waitForFunction(() => !document.querySelector('#editor').disabled);
-  check('empty page says how to start', (await lpage.locator('.empty-hint').textContent()).includes('Back'));
-  await lpage.tap('#side-back');
+  check('empty page says how to start', (await lpage.locator('.empty-hint').textContent()).includes('Slate'));
+  await lpage.tap('#mode-slate');
   await lpage.waitForTimeout(300);
   const slateBox = await lpage.locator('#slate').boundingBox();
   const sheetBox = await lpage.locator('.sheet-scroll').boundingBox();

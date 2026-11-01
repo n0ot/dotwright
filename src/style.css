@@ -540,11 +540,11 @@ body.has-slate {
 }
 
 /*
- * The slate is only shown on the back of the page, where it writes as a
+ * The slate is only shown in Slate mode, on the back of the page, where it writes as a
  * real slate does: mirrored, with dots 1 to 3 on the right, punched as pits.
  * Next, the key used most, is a tall key on the left, the way the stylus
  * moves. Delete and New line are on the right, as on a phone keyboard.
- * On the front, only the Front / Back switch is shown.
+ * In Brailler mode, only the mode switch is shown.
  */
 .slate-body {
   display: grid;
@@ -623,6 +623,20 @@ body.has-slate {
   transform: scaleX(-1);
 }
 
+/* At the end of a full line: no cell to punch, and New line is the way on. */
+.slate.line-full .slate-dot {
+  opacity: 0.35;
+}
+.slate #slate-next[aria-disabled='true'] {
+  background: var(--key);
+  color: var(--muted);
+  filter: none;
+}
+.slate.line-full #slate-newline {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
 /* The window of a slate's guide: paper showing through an aluminium frame, with six pits. */
 .slate-cell {
   display: grid;
@@ -687,7 +701,7 @@ body.has-slate {
   margin: 12px auto 0;
 }
 
-/* Front and Back: turns the page over. */
+/* The mode switch: Brailler (the page as read) or Slate (the page as punched). */
 .side-switch {
   grid-column: 2;
   display: flex;
@@ -710,10 +724,14 @@ body.has-slate {
   width: 34px;
   height: 34px;
 }
-.side-switch button[aria-pressed='true'] {
+.side-switch button[aria-checked='true'] {
   background: var(--surface);
   color: var(--text);
   box-shadow: 0 1px 3px rgb(20 20 30 / 16%);
+}
+/* The chosen mode's picture in the accent colour, so which one is on reads at a glance. */
+.side-switch button[aria-checked='true'] svg {
+  color: var(--accent);
 }
 
 .slate-position {
@@ -729,6 +747,11 @@ body.has-slate {
 }
 .slate-position span {
   display: block;
+}
+/* The last 6 cells of a line, after the margin bell. */
+.slate-position .near-end {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 /* Touch screens keep :hover after a tap; don't let it change how buttons look. */
@@ -748,13 +771,13 @@ body.has-slate {
   .side-switch button:hover {
     background: transparent;
   }
-  .side-switch button[aria-pressed='true']:hover {
+  .side-switch button[aria-checked='true']:hover {
     background: var(--surface);
   }
 }
 
 /*
- * On the front, the Front / Back switch floats over the page instead of
+ * In Brailler mode, the mode switch floats over the page instead of
  * sitting in a panel, so the page runs to the bottom of the screen. The page
  * keeps room under its last line to scroll it clear of the switch.
  */
@@ -889,6 +912,10 @@ body.has-slate:has(.slate:not(.back)) .sheet {
  * the back it goes down the right side, where the right thumb is.
  */
 @media (orientation: landscape) and (max-height: 500px) {
+  /* Hints fit the part of the page beside the slate. */
+  body:has(.slate.back) .overlay > .empty-hint {
+    width: min(340px, calc(100vw - var(--slate-width) - 120px));
+  }
   .slate.back {
     --dot: min(46px, 12.5vh);
     --key-w: 76px;
@@ -974,6 +1001,38 @@ dialog li {
 }
 #help {
   width: min(640px, calc(100% - 32px));
+  line-height: 1.5;
+}
+#help p {
+  margin: 0 0 10px;
+}
+/* Phone-only notes in the instructions. */
+.small-screen-only {
+  display: none;
+}
+@media (max-width: 640px), (max-height: 500px) {
+  .small-screen-only {
+    display: block;
+  }
+}
+.shortcuts {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.shortcuts th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 0 8px 6px 0;
+}
+.shortcuts td {
+  padding: 7px 8px 7px 0;
+  border-top: 1px solid var(--rule);
+  vertical-align: top;
+}
+.shortcuts td:last-child {
+  white-space: nowrap;
 }
 .dialog-actions,
 form p:last-child {
@@ -999,17 +1058,26 @@ dialog label.check {
   height: 16px;
   accent-color: var(--accent);
 }
-.setting-row {
+.keys-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 16px 0 0;
-  padding-top: 14px;
-  border-top: 1px solid var(--rule);
-  color: var(--muted);
+  gap: 8px;
 }
-.setting-row button {
+.keys-row #dot-keys {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.keys-setting label {
+  display: block;
+  margin-bottom: 6px;
+}
+.keys-setting .field-error {
+  display: block;
+  margin: 6px 0 0;
+}
+.keys-row button {
+  flex: none;
   background: var(--hover);
 }
 

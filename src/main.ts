@@ -5,11 +5,11 @@ import { formatBrf, parseBrf } from './brf';
 import { BrailleEditor } from './editor';
 import { checkDocument, type WordFeedback } from './feedback';
 import { openBrf, saveBrf, type FileHandle } from './files';
-import { LINES_PER_PAGE, lineNumberOf, offsetOf, positionOf, wordAt, type Word } from './layout';
+import { BELL_CELLS_LEFT, CELLS_PER_LINE, LINES_PER_PAGE, lineNumberOf, offsetOf, positionOf, wordAt, type Word } from './layout';
 import { DEFAULT_DOT_KEYS, describeDotKeys, loadDotKeys, parseDotKeys, saveDotKeys } from './keymap';
 import { keepCaretOnKeyboardFocus } from './focusCaret';
 import { initLouis } from './louis';
-import { playClick } from './click';
+import { playBell, playClick, playStop } from './click';
 import { SLATE_ICONS } from './slateIcons';
 import { loadPrefs, savePrefs } from './prefs';
 import { clearRecovery, loadRecovery, writeRecovery } from './recovery';
@@ -26,7 +26,6 @@ const saveAsButton = byId('save-as-doc');
 const help = byId<HTMLDialogElement>('help');
 const printView = byId<HTMLTextAreaElement>('print-view');
 const currentKeys = byId('current-keys');
-const keysDialog = byId<HTMLDialogElement>('keys-dialog');
 const saveDialog = byId<HTMLDialogElement>('save-dialog');
 const saveForm = byId<HTMLFormElement>('save-form');
 const fileNameInput = byId<HTMLInputElement>('file-name');
@@ -41,10 +40,9 @@ const dotKeysInput = byId<HTMLInputElement>('dot-keys');
 const dotKeysError = byId('dot-keys-error');
 const settingsDialog = byId<HTMLDialogElement>('settings-dialog');
 const showEmptyDots = byId<HTMLInputElement>('show-empty-dots');
-const showSlateInput = byId<HTMLInputElement>('show-slate');
 const slateClicksInput = byId<HTMLInputElement>('slate-clicks');
 const echoCellsInput = byId<HTMLInputElement>('echo-cells');
-const settingsKeys = byId('settings-keys');
+const marginBellInput = byId<HTMLInputElement>('margin-bell');
 
 /**
  * The page's geometry, smaller on narrow screens such as phones. Set on the
@@ -76,11 +74,22 @@ setGeometry();
 let cell = FONT_SIZE * 0.6;
 let feedbackOn = true;
 const prefs = loadPrefs();
-/** Which side of the page is shown. The back is the braille as punched on a slate, without feedback. */
+/** Apple keyboards: Command and Option, and the Delete key, instead of Ctrl, Alt and Backspace. */
+const isApple = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+const ALT = isApple ? 'Option' : 'Alt';
+const MOD = isApple ? 'Command' : 'Ctrl';
+/**
+ * The mode, as the side of the page it shows. Brailler mode ("front") is the
+ * page as read, written with six keys, with feedback. Slate mode ("back") is
+ * the page as punched on a slate, mirrored and without feedback, written with
+ * the slate.
+ */
 let side: 'front' | 'back' = prefs.side === 'back' ? 'back' : 'front';
 const feedbackShown = () => feedbackOn && side === 'front';
 const feedbackHiddenMessage = () =>
-  side === 'back' ? 'This is the back of the page. Alt+F flips it to show feedback.' : 'Feedback is off. Alt+T turns it on.';
+  side === 'back' ? `There's no feedback in Slate mode. ${ALT}+M switches to Brailler mode.` : `Feedback is off. ${ALT}+T turns it on.`;
+/** Set once the learner has switched to Brailler mode to check what was written on the slate. */
+let checkedSlateWork = false;
 let echoCells = prefs.echoCells;
 let fileName: string | null = null;
 let fileHandle: FileHandle | null = null;
@@ -96,6 +105,7 @@ const say = (message: string) => announcer.say(message);
 
 const editor = new BrailleEditor(textarea, {
   change(kind) {
+    if ((kind === 'cell' || kind === 'space') && prefs.marginBell && atBellCell()) playBell();
     if (kind === 'space' || kind === 'newline') announceCompletedWord(kind);
     else if (kind === 'undo' || kind === 'redo') say(kind === 'undo' ? 'Undo' : 'Redo');
     dropRevealIfMoved();
@@ -114,7 +124,39 @@ const editor = new BrailleEditor(textarea, {
   nothingTo(action) {
     say(`Nothing to ${action}`);
   },
+  lineFull: endOfLine,
+  keysOff() {
+    playStop();
+    say('In Slate mode, write with the slate.');
+    shakeCursor();
+    // Points to the slate, which is what writes here.
+    if (!reducedMotion.matches) {
+      slateCell.animate([{ scale: '1' }, { scale: '1.06' }, { scale: '1' }], { duration: 360, easing: 'ease-in-out' });
+    }
+  },
 });
+
+/** True just after the cell that leaves a line with 6 cells, where a braillewriter's bell rings. */
+function atBellCell(): boolean {
+  return positionOf(editor.text, editor.selectionStart).cell === CELLS_PER_LINE - BELL_CELLS_LEFT + 1;
+}
+
+/** Nothing was written, because the line is full. */
+function endOfLine() {
+  playStop();
+  say('End of line');
+  shakeCursor();
+}
+
+/** Shakes the cursor on the page: the line is full, and nothing was written. */
+function shakeCursor() {
+  const cursor = overlay.querySelector('.slate-cursor, .caret-spot');
+  const position = slatePosition.lastElementChild;
+  const frames = reducedMotion.matches
+    ? [{ opacity: 0.2 }, { opacity: 1 }]
+    : [{ translate: '0' }, { translate: '-4px' }, { translate: '4px' }, { translate: '-2px' }, { translate: '0' }];
+  for (const el of [cursor, position]) el?.animate(frames, { duration: 260, easing: 'ease-out' });
+}
 
 // ---- Feedback -------------------------------------------------------------
 
@@ -296,6 +338,14 @@ function render() {
   overlay.replaceChildren();
   if (prefs.shadowDots) place('dot-shadows', 0, 0, undefined, display);
   if (!display) place('empty-hint', PAD, TOP + LINE + 8, undefined, emptyHint());
+  else if (side === 'back' && !checkedSlateWork) {
+    // After a line on the slate, on the empty line it starts: how to read it back.
+    const at = editor.selectionStart;
+    const line = lineStarts.length - 1;
+    if (line > 0 && at === display.length && lineStarts[line] === at) {
+      place('empty-hint', PAD, TOP + (line + 1) * LINE + 8, undefined, 'To read what you wrote, with feedback, switch to Brailler, below.');
+    }
+  }
 
   const lineOf = (offset: number) => {
     let i = lineStarts.length - 1;
@@ -326,7 +376,7 @@ function render() {
     const at = editor.selectionStart;
     const line = lineOf(at);
     const col = at - lineStarts[line];
-    const onSlate = prefs.showSlate && side === 'back';
+    const onSlate = side === 'back';
     place(onSlate ? `slate-cursor${slateMask ? ' writing' : ''}` : 'caret-spot', PAD + col * cell - 2, line * LINE + GLYPH_TOP - 4, cell + 4)
       .style.height = `${FONT_SIZE * 1.04 + 8}px`;
     if (onSlate && slateMask) place('slate-preview', PAD + col * cell, TOP + line * LINE, undefined, maskToChar(slateMask));
@@ -366,12 +416,9 @@ function render() {
  */
 function emptyHint(): string {
   const touch = coarsePointer.matches;
-  if (side === 'back' && prefs.showSlate) {
-    return touch ? 'Tap dots on the slate below, then Next.' : 'Click dots on the slate below, then Next. The braille keys work here too.';
-  }
-  if (touch && prefs.showSlate) return 'To write with the slate, turn the page over: tap Back, below.';
-  const typing = `Press ${[...editor.dotKeys.toUpperCase()].join(' ')} together to write a cell.`;
-  return prefs.showSlate ? `${typing} Or turn the page over, with Back below, to write on the slate.` : typing;
+  if (side === 'back') return touch ? 'Tap dots on the slate below, then Next.' : 'Click dots on the slate below, then Next.';
+  if (touch) return 'To write on this screen, switch to Slate, below.';
+  return `Press ${[...editor.dotKeys.toUpperCase()].join(' ')} together to write a cell, as on a brailler. Or switch to Slate, below.`;
 }
 
 // ---- Print view -----------------------------------------------------------
@@ -519,16 +566,24 @@ function popoverButton(label: string, action: () => void): HTMLButtonElement {
 const slate = byId('slate');
 const slateDots = [...slate.querySelectorAll<HTMLButtonElement>('.slate-dot')];
 const slateCell = slate.querySelector<HTMLElement>('.slate-cell')!;
+const slateNext = byId('slate-next');
 /** Dots set on the slate and not yet written, as a mask. */
 let slateMask = 0;
 const slatePosition = byId('slate-position');
-const sideFront = byId('side-front');
-const sideBack = byId('side-back');
+const modeBrailler = byId('mode-brailler');
+const modeSlate = byId('mode-slate');
 const sheet = byId('sheet');
 const coarsePointer = matchMedia('(pointer: coarse)');
 
 function renderSlate() {
-  if (!prefs.showSlate) return;
+  // At the end of a full line there's no cell to punch, as on a slate, until
+  // a new line is started or the cursor moves.
+  const full = editor.lineIsFull();
+  slate.classList.toggle('line-full', full);
+  for (const button of [...slateDots, slateNext]) {
+    if (full) button.setAttribute('aria-disabled', 'true');
+    else button.removeAttribute('aria-disabled');
+  }
   for (const button of slateDots) {
     const dot = Number(button.dataset.dot);
     button.setAttribute('aria-pressed', String(Boolean(slateMask & (1 << (dot - 1)))));
@@ -537,7 +592,9 @@ function renderSlate() {
   const lineText = document.createElement('span');
   lineText.textContent = `Line ${line}`;
   const cellText = document.createElement('span');
-  cellText.textContent = `Cell ${at} of 40`;
+  const atEnd = at > CELLS_PER_LINE;
+  cellText.textContent = atEnd ? 'End of line' : `Cell ${at} of ${CELLS_PER_LINE}`;
+  cellText.classList.toggle('near-end', at > CELLS_PER_LINE - BELL_CELLS_LEFT);
   slatePosition.replaceChildren(lineText, cellText);
 }
 
@@ -584,6 +641,7 @@ function afterSlateAction() {
 
 for (const button of slateDots) {
   button.addEventListener('click', () => {
+    if (button.hasAttribute('aria-disabled')) return endOfLine();
     const bit = 1 << (Number(button.dataset.dot) - 1);
     slateMask ^= bit;
     if (prefs.slateClicks) playClick(Boolean(slateMask & bit));
@@ -607,10 +665,14 @@ function slideCell(x: number, y = 0) {
   );
 }
 
-/** Writes the dots set on the slate at the caret, and clears the slate. */
-function stamp() {
-  editor.slateWrite(slateMask);
+/**
+ * Writes the dots set on the slate at the caret, and clears the slate. If the
+ * line is full, nothing is written and the dots stay set.
+ */
+function stamp(): boolean {
+  if (!editor.slateWrite(slateMask)) return false;
   slateMask = 0;
+  return true;
 }
 
 /**
@@ -635,7 +697,8 @@ function deleteBackward() {
 }
 
 const deleteKey = byId('slate-delete');
-const isApple = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+for (const el of document.querySelectorAll('kbd.mod')) el.textContent = MOD;
+for (const el of document.querySelectorAll('kbd.alt')) el.textContent = ALT;
 for (const el of document.querySelectorAll('.delete-key-name')) el.textContent = isApple ? 'Delete' : 'Backspace';
 
 // Held down, it keeps deleting, faster after a moment, like the real key.
@@ -669,15 +732,18 @@ deleteKey.addEventListener('click', () => {
   else deleteBackward();
 });
 
-// The slate is on the back of the page, where lines run right to left: the
+// The slate writes on the back of the page, where lines run right to left: the
 // stylus moves left to the next cell.
 const slateActions: [string, () => void][] = [
-  ['slate-next', () => (stamp(), slideCell(-1))],
+  ['slate-next', () => void (stamp() && slideCell(-1))],
   [
     'slate-newline',
     () => {
-      if (slateMask) stamp();
+      // With the line full, the dots set go at the start of the new line.
+      const carry = slateMask && editor.lineIsFull();
+      if (slateMask && !carry) stamp();
       editor.slateNewLine();
+      if (carry) stamp();
       slideCell(0, 1);
     },
   ],
@@ -697,7 +763,10 @@ for (const button of slate.querySelectorAll('button')) {
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let turning = false;
 
-/** Turns the page over, squeezing it edge-on and opening it out again on the other side. */
+/**
+ * Switches mode, turning the page over: it squeezes edge-on and opens out
+ * again on the other side.
+ */
 function flip() {
   if (turning) return;
   if (reducedMotion.matches) return turnOver();
@@ -712,6 +781,7 @@ function flip() {
 
 function turnOver() {
   side = side === 'front' ? 'back' : 'front';
+  if (side === 'front' && editor.text) checkedSlateWork = true;
   prefs.side = side;
   savePrefs(prefs);
   if (side === 'back' && document.activeElement === printView) textarea.focus();
@@ -722,20 +792,38 @@ function turnOver() {
   // Once the page has opened out, so the cursor is measured where it ends up.
   if (reducedMotion.matches) revealSlateCursor();
   else setTimeout(revealSlateCursor, 200);
-  say(side === 'back' ? 'Back of the page, mirrored as on a slate. No feedback until you turn it over.' : 'Front of the page.');
+  say(
+    side === 'back'
+      ? 'Slate mode. The page is mirrored, as on a slate, with no feedback. Write with the slate.'
+      : 'Brailler mode.',
+  );
 }
 
-/** Shows the page and the slate on the current side. */
+/** Shows the page and the slate for the current mode. */
 function showSide() {
   const back = side === 'back';
+  editor.keyboardEdits = !back;
   sheet.classList.toggle('back', back);
   slate.classList.toggle('back', back);
-  sideFront.setAttribute('aria-pressed', String(!back));
-  sideBack.setAttribute('aria-pressed', String(back));
+  // A radio group: one tab stop, on the mode that's chosen.
+  for (const [button, on] of [[modeBrailler, !back], [modeSlate, back]] as const) {
+    button.setAttribute('aria-checked', String(on));
+    button.tabIndex = on ? 0 : -1;
+  }
 }
 
-sideFront.addEventListener('click', () => side === 'back' && flip());
-sideBack.addEventListener('click', () => side === 'front' && flip());
+modeBrailler.addEventListener('click', () => side === 'back' && flip());
+modeSlate.addEventListener('click', () => side === 'front' && flip());
+// Arrow keys move between the modes, choosing as they go, as in any radio group.
+for (const button of [modeBrailler, modeSlate]) {
+  button.addEventListener('keydown', (e) => {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+    e.preventDefault();
+    const other = button === modeBrailler ? modeSlate : modeBrailler;
+    other.focus();
+    other.click();
+  });
+}
 
 /**
  * Keeps the space the slate covers clear: at the bottom of the page, or at
@@ -743,20 +831,18 @@ sideBack.addEventListener('click', () => side === 'front' && flip());
  */
 new ResizeObserver(() => {
   const style = document.documentElement.style;
-  style.setProperty('--slate-height', `${slate.hidden ? 0 : slate.offsetHeight}px`);
-  style.setProperty('--slate-width', `${slate.hidden ? 0 : slate.offsetWidth}px`);
+  style.setProperty('--slate-height', `${slate.offsetHeight}px`);
+  style.setProperty('--slate-width', `${slate.offsetWidth}px`);
 }).observe(slate);
 
-function applySlatePrefs() {
-  slate.hidden = !prefs.showSlate;
-  document.body.classList.toggle('has-slate', prefs.showSlate);
-  // With the slate on a touch screen, tapping the page moves the cursor
-  // without bringing up the on-screen keyboard. A hardware keyboard still works.
-  if (prefs.showSlate && coarsePointer.matches) textarea.setAttribute('inputmode', 'none');
+// On a touch screen, tapping the page moves the cursor without bringing up
+// the on-screen keyboard; the slate writes. A hardware keyboard still works.
+function applyPointer() {
+  if (coarsePointer.matches) textarea.setAttribute('inputmode', 'none');
   else textarea.removeAttribute('inputmode');
-  if (!prefs.showSlate) document.documentElement.style.setProperty('--slate-height', '0px');
   render();
 }
+coarsePointer.addEventListener('change', applyPointer);
 
 // ---- Files and recovery ---------------------------------------------------
 
@@ -922,68 +1008,68 @@ function setShadowDots(on: boolean) {
   render();
 }
 
-const slateSettings: [HTMLInputElement, 'showSlate' | 'slateClicks'][] = [
-  [showSlateInput, 'showSlate'],
+const soundSettings: [HTMLInputElement, 'slateClicks' | 'marginBell'][] = [
   [slateClicksInput, 'slateClicks'],
+  [marginBellInput, 'marginBell'],
 ];
-for (const [input, key] of slateSettings) {
+for (const [input, key] of soundSettings) {
   input.addEventListener('change', () => {
     prefs[key] = input.checked;
     savePrefs(prefs);
-    applySlatePrefs();
   });
 }
 
 function openSettings() {
-  for (const [input, key] of slateSettings) input.checked = prefs[key];
+  for (const [input, key] of soundSettings) input.checked = prefs[key];
   showEmptyDots.checked = prefs.shadowDots;
   echoCellsInput.checked = echoCells;
-  settingsKeys.textContent = describeDotKeys(editor.dotKeys);
+  dotKeysInput.value = Array.from(editor.dotKeys).join(' ');
+  dotKeysError.textContent = '';
+  dotKeysInput.removeAttribute('aria-invalid');
   settingsDialog.showModal();
 }
 
 showEmptyDots.addEventListener('change', () => setShadowDots(showEmptyDots.checked));
 echoCellsInput.addEventListener('change', () => setEchoCells(echoCellsInput.checked));
 byId('show-settings').addEventListener('click', openSettings);
-byId('settings-change-keys').addEventListener('click', () => {
-  settingsDialog.close();
-  openKeysDialog();
-});
-settingsDialog.addEventListener('close', () => {
-  if (!keysDialog.open) textarea.focus();
-});
+settingsDialog.addEventListener('close', () => textarea.focus());
 
-function openKeysDialog() {
-  if (help.open) help.close();
-  dotKeysInput.value = editor.dotKeys;
-  dotKeysError.textContent = '';
-  dotKeysInput.removeAttribute('aria-invalid');
-  keysDialog.showModal();
-  dotKeysInput.select();
-}
-
-function setDotKeys(keys: string) {
-  editor.dotKeys = keys;
-  saveDotKeys(keys);
-  keysDialog.close();
-  say(`Braille keys saved. ${describeDotKeys(keys)}`);
-}
-
-keysForm.addEventListener('submit', (e) => {
-  e.preventDefault();
+/**
+ * Saves the braille keys typed in Settings, if they've changed. Returns false,
+ * and says what's wrong, if they can't be used.
+ */
+function saveKeysSetting(): boolean {
   const parsed = parseDotKeys(dotKeysInput.value);
   if ('error' in parsed) {
     dotKeysInput.setAttribute('aria-invalid', 'true');
     dotKeysError.textContent = parsed.error;
     dotKeysInput.focus();
-    return;
+    return false;
   }
-  setDotKeys(parsed.keys);
+  if (parsed.keys !== editor.dotKeys) {
+    editor.dotKeys = parsed.keys;
+    saveDotKeys(parsed.keys);
+    say(`Braille keys saved. ${describeDotKeys(parsed.keys)}`);
+    render();
+  }
+  return true;
+}
+
+// Enter in the keys field saves them, like Done; Escape leaves them as they were.
+keysForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (saveKeysSetting()) settingsDialog.close();
 });
-byId('keys-default').addEventListener('click', () => setDotKeys(DEFAULT_DOT_KEYS));
-byId('keys-cancel').addEventListener('click', () => keysDialog.close());
+byId('settings-done').addEventListener('submit', (e) => {
+  if (!saveKeysSetting()) e.preventDefault();
+});
+byId('keys-default').addEventListener('click', () => {
+  dotKeysInput.value = Array.from(DEFAULT_DOT_KEYS).join(' ');
+  dotKeysError.textContent = '';
+  dotKeysInput.removeAttribute('aria-invalid');
+  dotKeysInput.focus();
+});
 byId('save-cancel').addEventListener('click', () => saveDialog.close());
-keysDialog.addEventListener('close', () => textarea.focus());
 
 // ---- Go to ----------------------------------------------------------------
 
@@ -1036,7 +1122,7 @@ byId('goto-cancel').addEventListener('click', () => gotoDialog.close());
 gotoDialog.addEventListener('close', () => gotoReturn.focus());
 
 window.addEventListener('keydown', (e) => {
-  if (help.open || keysDialog.open || saveDialog.open || gotoDialog.open || settingsDialog.open) return;
+  if (help.open || saveDialog.open || gotoDialog.open || settingsDialog.open) return;
   const mod = e.ctrlKey || e.metaKey;
   if (e.altKey && !mod) {
     const commands: Record<string, () => void> = {
@@ -1044,7 +1130,7 @@ window.addEventListener('keydown', (e) => {
       KeyR: revealReference,
       KeyN: () => moveToIssue(e.shiftKey ? -1 : 1),
       KeyT: toggleFeedback,
-      KeyF: flip,
+      KeyM: flip,
       KeyL: () => {
         const { page, line, cell } = positionOf(editor.text, editor.selectionStart);
         say(`Page ${page}, line ${line}, cell ${cell}.`);
@@ -1055,13 +1141,16 @@ window.addEventListener('keydown', (e) => {
         say(echoCells ? 'Announcing entered cells.' : 'Not announcing entered cells.');
       },
       KeyH: openHelp,
-      KeyB: openKeysDialog,
     };
     const command = commands[e.code];
     if (command) {
       e.preventDefault();
       command();
     }
+  } else if (mod && !e.altKey && (e.key === '/' || e.key === '?' || e.code === 'Slash')) {
+    // Instructions: Command+/ or Ctrl+/, as for the list of shortcuts in Google Docs and Slack.
+    e.preventDefault();
+    openHelp();
   } else if (mod && !e.altKey && (e.code === 'KeyS' || e.code === 'KeyO')) {
     e.preventDefault();
     if (e.code === 'KeyS') save(e.shiftKey);
@@ -1082,7 +1171,6 @@ byId('show-help').addEventListener('click', (e) => {
   e.preventDefault();
   openHelp();
 });
-byId('change-keys').addEventListener('click', openKeysDialog);
 help.addEventListener('close', () => textarea.focus());
 textarea.addEventListener('scroll', () => {
   overlay.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`;
@@ -1136,7 +1224,7 @@ async function start() {
   ]);
   measureCell();
   showSide();
-  applySlatePrefs();
+  applyPointer();
   editor.dotKeys = loadDotKeys();
 
   const copy = loadRecovery();
