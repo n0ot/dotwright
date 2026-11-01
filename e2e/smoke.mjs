@@ -5,7 +5,7 @@ import { chromium, webkit } from 'playwright';
 const URL = process.env.URL ?? 'http://localhost:5173/';
 const DOTS = { 1: 'f', 2: 'd', 3: 's', 4: 'j', 5: 'k', 6: 'l' };
 // Braille ASCII to dot numbers, for the cells this test types.
-const CELLS = { a: '1', n: '1345', d: '145', '&': '12346', '!': '2346', c: '14', t: '2345', '4': '256', ',': '6', i: '24' };
+const CELLS = { a: '1', n: '1345', d: '145', '&': '12346', '!': '2346', c: '14', t: '2345', '4': '256', ',': '6', i: '24', m: '134', y: '13456', s: '234', o: '135', b: '12', h: '125', e: '15' };
 
 async function chord(page, ch) {
   if (ch === ' ') return page.keyboard.press('Space');
@@ -425,6 +425,31 @@ for (const browserType of [chromium, webkit]) {
   await page.tap('#menu-button');
   await page.locator('#file-status').tap({ position: { x: 8, y: 6 } });
   check('tapping elsewhere closes the menu', await page.locator('#new-doc').isHidden());
+  // A flagged word near the right edge of the screen: its popover stays on screen.
+  await page.tap('#mode-brailler');
+  await page.waitForTimeout(300);
+  // As with a keyboard connected to the phone.
+  await page.focus('#editor');
+  await type(page, 'my cat sat on a mat by the ');
+  await page.keyboard.press('Enter');
+  await type(page, 'my ');
+  const theWord = page.locator('.print.differs', { hasText: 'the' }).first();
+  const wordBox = await theWord.boundingBox();
+  await page.touchscreen.tap(wordBox.x + 6, wordBox.y + 30);
+  await page.waitForTimeout(200);
+  const scrolled = () => page.evaluate(() => document.querySelector('#sheet').parentElement.scrollLeft);
+  const before = await scrolled();
+  const viewport = page.viewportSize();
+  const popBox = await page.locator('#word-popover').boundingBox();
+  check('the popover stays on screen', popBox && popBox.x >= 0 && popBox.x + popBox.width <= viewport.width, JSON.stringify(popBox));
+  const show = await page.locator('#word-popover button', { hasText: 'Show correct form' }).boundingBox();
+  await page.touchscreen.tap(show.x + show.width / 2, show.y + show.height / 2);
+  await page.waitForTimeout(200);
+  check('Show correct form shows it, without scrolling the page',
+    (await page.locator('#word-popover .correct').count()) === 1 && (await scrolled()) === before, `${before} ${await scrolled()}`);
+  const nextPrint = await page.locator('.print', { hasText: 'my' }).last().boundingBox();
+  const pop = await page.locator('#word-popover').boundingBox();
+  check('the popover is above the next line', pop.y + pop.height <= nextPrint.y + 2, `${JSON.stringify(pop)} ${JSON.stringify(nextPrint)}`);
   check('no page errors on the phone', errors.length === 0, errors.join('; '));
   await context.close();
 

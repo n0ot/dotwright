@@ -556,9 +556,32 @@ function renderPopover(state: WordState | null, line: number, lineStarts: number
   }
   popover.replaceChildren(...parts);
   const col = state.word.start - lineStarts[line];
-  popover.style.left = `${PAD + col * cell - 8}px`;
+  popoverLeft = PAD + col * cell - 8;
   // In the gap below the wavy underline, above the next line's print.
-  popover.style.top = `${GLYPH_TOP + line * LINE + FONT_SIZE * 1.04 + 5}px`;
+  popover.style.top = `${GLYPH_TOP + line * LINE + FONT_SIZE * 1.04 + (narrowScreen.matches ? 3 : 5)}px`;
+  fitPopover();
+}
+
+/** Where the popover goes, under its word, before it's kept on screen. */
+let popoverLeft = 0;
+
+/**
+ * Keeps the popover within the part of the page in view, so its buttons can
+ * always be reached. On a phone the page is wider than the screen, and a
+ * popover under a word near the edge would run off it.
+ */
+function fitPopover() {
+  if (popover.hidden) return;
+  popover.style.left = `${popoverLeft}px`;
+  const box = popover.getBoundingClientRect();
+  const view = sheetScroll.getBoundingClientRect();
+  const margin = 8;
+  const right = Math.min(view.right, innerWidth) - margin;
+  const left = Math.max(view.left, 0) + margin;
+  let shift = 0;
+  if (box.right > right) shift = right - box.right;
+  if (box.left + shift < left) shift = left - box.left;
+  if (shift) popover.style.left = `${popoverLeft + shift}px`;
 }
 
 function popoverButton(label: string, action: () => void): HTMLButtonElement {
@@ -619,6 +642,7 @@ function updateScrollEdges() {
   sheetFrame.classList.toggle('more-right', sheetScroll.scrollLeft < max - 2);
 }
 sheetScroll.addEventListener('scroll', updateScrollEdges, { passive: true });
+sheetScroll.addEventListener('scroll', fitPopover, { passive: true });
 new ResizeObserver(updateScrollEdges).observe(sheetScroll);
 
 // The page fills the window, below its last line too: clicking there goes to the end.

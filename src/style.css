@@ -1202,3 +1202,28 @@ kbd {
     grid-column: 1 / -1;
   }
 }
+
+/* On a phone the gap under a line is small: a slimmer popover, so it doesn't
+   cover the next line's print, with its buttons still easy to tap. */
+@media (max-width: 640px), (max-height: 500px) {
+  .word-popover {
+    gap: 6px;
+    padding: 1px 1px 1px 8px;
+    font-size: 11px;
+    line-height: 14px;
+  }
+  .word-popover button {
+    position: relative;
+    padding: 0 7px;
+    font-size: 11px;
+  }
+  .word-popover button::before {
+    content: '';
+    position: absolute;
+    inset: -12px -6px;
+  }
+  .word-popover .braille {
+    font-size: 17px;
+    line-height: 14px;
+  }
+}
