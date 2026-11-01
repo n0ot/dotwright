@@ -11,7 +11,7 @@ import { keepCaretOnKeyboardFocus } from './focusCaret';
 import { initLouis } from './louis';
 import { playBell, playClick, playStop } from './click';
 import { SLATE_ICONS } from './slateIcons';
-import { loadPrefs, savePrefs } from './prefs';
+import { DEFAULTS as DEFAULT_PREFS, loadPrefs, savePrefs } from './prefs';
 import { clearRecovery, loadRecovery, writeRecovery } from './recovery';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -40,7 +40,8 @@ const dotKeysInput = byId<HTMLInputElement>('dot-keys');
 const dotKeysError = byId('dot-keys-error');
 const settingsDialog = byId<HTMLDialogElement>('settings-dialog');
 const showEmptyDots = byId<HTMLInputElement>('show-empty-dots');
-const slateClicksInput = byId<HTMLInputElement>('slate-clicks');
+const soundsInput = byId<HTMLInputElement>('sounds');
+const slateNumbersInput = byId<HTMLInputElement>('slate-numbers');
 const echoCellsInput = byId<HTMLInputElement>('echo-cells');
 const marginBellInput = byId<HTMLInputElement>('margin-bell');
 const liveInterliningInput = byId<HTMLInputElement>('live-interlining');
@@ -106,7 +107,7 @@ const say = (message: string) => announcer.say(message);
 
 const editor = new BrailleEditor(textarea, {
   change(kind) {
-    if ((kind === 'cell' || kind === 'space') && prefs.marginBell && atBellCell()) playBell();
+    if ((kind === 'cell' || kind === 'space') && prefs.sounds && prefs.marginBell && atBellCell()) playBell();
     if (kind === 'space' || kind === 'newline') announceCompletedWord(kind);
     else if (kind === 'undo' || kind === 'redo') say(kind === 'undo' ? 'Undo' : 'Redo');
     dropRevealIfMoved();
@@ -127,7 +128,7 @@ const editor = new BrailleEditor(textarea, {
   },
   lineFull: endOfLine,
   keysOff() {
-    playStop();
+    if (prefs.sounds) playStop();
     say('In Slate mode, write with the slate.');
     shakeCursor();
     // Points to the slate, which is what writes here.
@@ -144,7 +145,7 @@ function atBellCell(): boolean {
 
 /** Nothing was written, because the line is full. */
 function endOfLine() {
-  playStop();
+  if (prefs.sounds) playStop();
   say('End of line');
   shakeCursor();
 }
@@ -245,7 +246,7 @@ function speakWordFeedback() {
   if (!state) return say('No word at the cursor.');
   const f = state.feedback;
   if (!f) return say(`Unfinished word: ${spell(state.word.text)}. Feedback appears after Space or Enter.`);
-  say(`${f.print}. ${statusText(f)}${f.status === 'differs' ? ' Alt+R shows the correct form.' : ''}`);
+  say(`${f.print}. ${statusText(f)}${f.status === 'differs' ? ` ${ALT}+R shows the correct form.` : ''}`);
 }
 
 function revealReference() {
@@ -344,7 +345,7 @@ function render() {
     const at = editor.selectionStart;
     const line = lineStarts.length - 1;
     if (line > 0 && at === display.length && lineStarts[line] === at) {
-      place('empty-hint', PAD, TOP + (line + 1) * LINE + 8, undefined, 'To read what you wrote, with feedback, switch to Brailler, below.');
+      place('empty-hint', PAD, TOP + (line + 1) * LINE + 8, undefined, `To read what you wrote, with feedback, switch to Brailler, ${slateBeside.matches ? 'on the right' : 'below'}.`);
     }
   }
 
@@ -415,15 +416,20 @@ function render() {
   renderSlate();
 }
 
+/** A phone held in landscape, with the slate and the mode switch to the right of the page (see style.css). */
+const slateBeside = matchMedia('(orientation: landscape) and (max-height: 500px)');
+slateBeside.addEventListener('change', () => render());
+
 /**
  * What to do first, shown on an empty page. It's only a visual cue: screen
  * reader users have the instructions, and the hint is in the hidden overlay.
  */
 function emptyHint(): string {
   const touch = coarsePointer.matches;
-  if (side === 'back') return touch ? 'Tap dots on the slate below, then Next.' : 'Click dots on the slate below, then Next.';
-  if (touch) return 'To write on this screen, switch to Slate, below.';
-  return `Press ${[...editor.dotKeys.toUpperCase()].join(' ')} together to write a cell, as on a brailler. Or switch to Slate, below.`;
+  const where = slateBeside.matches ? 'on the right' : 'below';
+  if (side === 'back') return `${touch ? 'Tap' : 'Click'} dots on the slate ${where}, then Next.`;
+  if (touch) return `To write on this screen, switch to Slate, ${where}.`;
+  return `Press ${[...editor.dotKeys.toUpperCase()].join(' ')} together to write a cell, as on a brailler. Or switch to Slate, ${where}.`;
 }
 
 // ---- Print view -----------------------------------------------------------
@@ -649,7 +655,7 @@ for (const button of slateDots) {
     if (button.hasAttribute('aria-disabled')) return endOfLine();
     const bit = 1 << (Number(button.dataset.dot) - 1);
     slateMask ^= bit;
-    if (prefs.slateClicks) playClick(Boolean(slateMask & bit));
+    if (prefs.sounds) playClick(Boolean(slateMask & bit));
     render();
   });
 }
@@ -696,7 +702,7 @@ function deleteBackward() {
     editor.slateDelete();
     say(erased === '\n' ? 'new line' : spokenName(erased));
   }
-  if (prefs.slateClicks) playClick(false);
+  if (prefs.sounds) playClick(false);
   slideCell(1);
   afterSlateAction();
 }
@@ -1008,43 +1014,57 @@ function setEchoCells(on: boolean) {
   savePrefs(prefs);
 }
 
-function setShadowDots(on: boolean) {
-  prefs.shadowDots = on;
-  showEmptyDots.checked = on;
-  savePrefs(prefs);
+/** The checkboxes in Settings, each with the preference it sets. */
+const checkboxSettings: [HTMLInputElement, 'shadowDots' | 'liveInterlining' | 'slateNumbers' | 'sounds' | 'marginBell'][] = [
+  [showEmptyDots, 'shadowDots'],
+  [liveInterliningInput, 'liveInterlining'],
+  [slateNumbersInput, 'slateNumbers'],
+  [soundsInput, 'sounds'],
+  [marginBellInput, 'marginBell'],
+];
+
+/** Shows the preferences in Settings, and applies them to the page. */
+function applyPrefs() {
+  for (const [input, key] of checkboxSettings) input.checked = prefs[key];
+  echoCellsInput.checked = echoCells;
+  // The bell is one of the sounds.
+  marginBellInput.disabled = !prefs.sounds;
+  document.body.classList.toggle('slate-numbers', prefs.slateNumbers);
   render();
 }
 
-const soundSettings: [HTMLInputElement, 'slateClicks' | 'marginBell'][] = [
-  [slateClicksInput, 'slateClicks'],
-  [marginBellInput, 'marginBell'],
-];
-for (const [input, key] of soundSettings) {
+for (const [input, key] of checkboxSettings) {
   input.addEventListener('change', () => {
     prefs[key] = input.checked;
     savePrefs(prefs);
+    applyPrefs();
   });
 }
+echoCellsInput.addEventListener('change', () => setEchoCells(echoCellsInput.checked));
 
-liveInterliningInput.addEventListener('change', () => {
-  prefs.liveInterlining = liveInterliningInput.checked;
-  savePrefs(prefs);
-  render();
-});
-
-function openSettings() {
-  liveInterliningInput.checked = prefs.liveInterlining;
-  for (const [input, key] of soundSettings) input.checked = prefs[key];
-  showEmptyDots.checked = prefs.shadowDots;
-  echoCellsInput.checked = echoCells;
-  dotKeysInput.value = Array.from(editor.dotKeys).join(' ');
+function showDotKeys(keys: string) {
+  dotKeysInput.value = Array.from(keys).join(' ');
   dotKeysError.textContent = '';
   dotKeysInput.removeAttribute('aria-invalid');
+}
+
+function openSettings() {
+  applyPrefs();
+  showDotKeys(editor.dotKeys);
   settingsDialog.showModal();
 }
 
-showEmptyDots.addEventListener('change', () => setShadowDots(showEmptyDots.checked));
-echoCellsInput.addEventListener('change', () => setEchoCells(echoCellsInput.checked));
+byId('settings-reset').addEventListener('click', () => {
+  // Everything in Settings; the mode and the Feedback switch aren't settings.
+  for (const [, key] of checkboxSettings) prefs[key] = DEFAULT_PREFS[key];
+  savePrefs(prefs);
+  setEchoCells(DEFAULT_PREFS.echoCells);
+  editor.dotKeys = DEFAULT_DOT_KEYS;
+  saveDotKeys(DEFAULT_DOT_KEYS);
+  showDotKeys(DEFAULT_DOT_KEYS);
+  applyPrefs();
+  say('Settings reset to defaults.');
+});
 byId('show-settings').addEventListener('click', openSettings);
 settingsDialog.addEventListener('close', () => textarea.focus());
 
@@ -1076,12 +1096,6 @@ keysForm.addEventListener('submit', (e) => {
 });
 byId('settings-done').addEventListener('submit', (e) => {
   if (!saveKeysSetting()) e.preventDefault();
-});
-byId('keys-default').addEventListener('click', () => {
-  dotKeysInput.value = Array.from(DEFAULT_DOT_KEYS).join(' ');
-  dotKeysError.textContent = '';
-  dotKeysInput.removeAttribute('aria-invalid');
-  dotKeysInput.focus();
 });
 byId('save-cancel').addEventListener('click', () => saveDialog.close());
 
@@ -1239,6 +1253,7 @@ async function start() {
   measureCell();
   showSide();
   applyPointer();
+  document.body.classList.toggle('slate-numbers', prefs.slateNumbers);
   editor.dotKeys = loadDotKeys();
 
   const copy = loadRecovery();

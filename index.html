@@ -108,13 +108,24 @@
 
     <dialog id="settings-dialog" aria-labelledby="settings-title">
       <h2 id="settings-title">Settings</h2>
-      <label class="check"><input type="checkbox" id="show-empty-dots" /> Show empty dot positions</label>
-      <label class="check"><input type="checkbox" id="echo-cells" /> Announce each cell as it is entered</label>
-      <label class="check"><input type="checkbox" id="live-interlining" /> Interline each word as it is written</label>
-      <label class="check"><input type="checkbox" id="margin-bell" /> Ring a bell near the end of a line</label>
-      <label class="check"><input type="checkbox" id="slate-clicks" /> Click when a dot is punched on the slate</label>
-      <h3>Braille keys</h3>
+      <fieldset>
+        <legend>Page</legend>
+        <label class="check"><input type="checkbox" id="show-empty-dots" /> Show empty dot positions</label>
+        <label class="check"><input type="checkbox" id="live-interlining" /> Show the print of a word while writing it</label>
+      </fieldset>
+      <fieldset>
+        <legend>Slate</legend>
+        <label class="check"><input type="checkbox" id="slate-numbers" /> Show dot numbers on the slate</label>
+      </fieldset>
+      <fieldset>
+        <legend>Speech and sound</legend>
+        <label class="check"><input type="checkbox" id="echo-cells" /> Announce each cell as it is entered</label>
+        <label class="check"><input type="checkbox" id="sounds" /> Play sounds</label>
+        <label class="check sub"><input type="checkbox" id="margin-bell" /> Ring a bell near the end of a line</label>
+      </fieldset>
       <form id="keys-form" class="keys-setting">
+        <fieldset>
+        <legend>Braille keys</legend>
         <label for="dot-keys">Keys for dots 1 to 6, in order</label>
         <div class="keys-row">
           <input
@@ -124,11 +135,14 @@
             spellcheck="false"
             aria-describedby="dot-keys-error"
           />
-          <button type="button" id="keys-default">Use F D S J K L</button>
         </div>
         <p id="dot-keys-error" class="field-error" role="alert"></p>
+        </fieldset>
       </form>
-      <form method="dialog" id="settings-done" class="dialog-actions"><button class="primary">Done</button></form>
+      <form method="dialog" id="settings-done" class="dialog-actions">
+        <button type="button" id="settings-reset" class="reset">Reset to defaults</button>
+        <button class="primary">Done</button>
+      </form>
     </dialog>
 
     <dialog id="help" aria-labelledby="help-title">
@@ -161,6 +175,8 @@
         move on. Next with no dots writes a space. <span class="delete-key-name">Delete</span>
         takes back the last cell, and New line starts the next line. Tap the page to move the
         cursor. The keyboard only moves the cursor in Slate mode, so you practise with the slate.
+        Dot 1 is at the top right, as on a real slate. To see the dot numbers on the slate, turn
+        them on in Settings.
       </p>
       <p class="small-screen-only">On a phone, use Slate mode, unless you have a keyboard connected.</p>
 

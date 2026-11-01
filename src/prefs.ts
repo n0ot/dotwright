@@ -6,14 +6,16 @@ export interface Prefs {
   shadowDots: boolean;
   /** Announce each cell as it is entered. */
   echoCells: boolean;
-  /** Play a click when a dot is punched on the slate. */
-  slateClicks: boolean;
+  /** Play sounds: the slate's clicks, the margin bell, and the knock when nothing can be written. */
+  sounds: boolean;
+  /** Number the slate's dots, for a learner still finding the mirrored positions. Off: it gives them away. */
+  slateNumbers: boolean;
   /**
    * Interline the word being written after every cell, not only once it's
    * finished. Off by default: the reading changing as she writes distracts.
    */
   liveInterlining: boolean;
-  /** Ring a bell near the end of a line, like a braillewriter's margin bell. */
+  /** Ring a bell near the end of a line, like a braillewriter's margin bell, when sounds are on. */
   marginBell: boolean;
   /**
    * The mode last used: Brailler ("front"), with six-key entry on the page as
@@ -22,7 +24,15 @@ export interface Prefs {
   side: 'front' | 'back';
 }
 
-const DEFAULTS: Prefs = { shadowDots: true, echoCells: true, slateClicks: true, marginBell: true, liveInterlining: false, side: 'front' };
+export const DEFAULTS: Readonly<Prefs> = {
+  shadowDots: true,
+  echoCells: true,
+  sounds: true,
+  slateNumbers: false,
+  marginBell: true,
+  liveInterlining: false,
+  side: 'front',
+};
 
 export function loadPrefs(): Prefs {
   try {

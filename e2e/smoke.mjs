@@ -216,8 +216,17 @@ for (const browserType of [chromium, webkit]) {
   await page.keyboard.press('Escape');
   await openSettings();
   check('Escape leaves the keys as they were', (await page.inputValue('#dot-keys')) === 'd c x h , .', await page.inputValue('#dot-keys'));
-  await page.click('#keys-default');
-  await page.click('#settings-done button');
+  check('settings are grouped', (await page.locator('#settings-dialog legend').allTextContents()).join('|') === 'Page|Slate|Speech and sound|Braille keys');
+  check('dot numbers are off by default', !(await page.isChecked('#slate-numbers')));
+  await page.uncheck('#sounds');
+  check('the bell is one of the sounds', await page.isDisabled('#margin-bell'));
+  await page.check('#slate-numbers');
+  await page.click('#settings-reset');
+  await page.waitForTimeout(80);
+  check('Reset to defaults restores the keys and settings',
+    (await page.inputValue('#dot-keys')) === 'f d s j k l' && await page.isChecked('#sounds') && !(await page.isChecked('#slate-numbers'))
+      && await page.isEnabled('#margin-bell') && (await announced(page)).includes('reset'), await announced(page));
+  await page.click('#settings-done button.primary');
   check('no instructions on the page', !(await page.locator('body > :not(dialog)').allInnerTexts()).join(' ').match(/press|substitute|F D S/i));
 
   // Slate: tap dots to write the cell at the cursor; keyboard focus stays in the document.
@@ -240,6 +249,15 @@ for (const browserType of [chromium, webkit]) {
   check('Slate mode shows the slate', await page.locator('.slate-cell').isVisible() && (await page.locator('.slate-cursor').count()) === 1);
   const dotColumn = () => page.evaluate(() => getComputedStyle(document.querySelector('.slate-dot[data-dot="1"]')).gridColumnStart);
   check('slate is mirrored', (await dotColumn()) === '2', await dotColumn());
+  const dotNumber = () => page.evaluate(() => getComputedStyle(document.querySelector('.slate-dot[data-dot="1"]'), '::after').content);
+  check('no dot numbers on the slate by default', ['none', 'normal', ''].includes(await dotNumber()), await dotNumber());
+  await openSettings();
+  await page.check('#slate-numbers');
+  await page.click('#settings-done button.primary');
+  check('dot numbers can be shown on the slate', (await dotNumber()) === '"1"', await dotNumber());
+  await openSettings();
+  await page.uncheck('#slate-numbers');
+  await page.click('#settings-done button.primary');
   check('screen readers hear that the dots are mirrored', (await page.getAttribute('.slate-cell', 'aria-label')) === 'Dots, mirrored');
   check('Slate mode shows the page mirrored and without print', await page.locator('#sheet.back').count() === 1);
   await punch(1, 4);
@@ -339,7 +357,7 @@ for (const browserType of [chromium, webkit]) {
   await openSettings();
   check('interlining each word as it is written is off by default', !(await page.isChecked('#live-interlining')));
   await page.check('#live-interlining');
-  await page.click('#settings-done button');
+  await page.click('#settings-done button.primary');
   check('with it on, the word being written is interlined, unchecked',
     (await page.locator('.print.live').allTextContents()).join() === 'ki' && (await page.locator('.print.live.differs, .print.live.unreadable').count()) === 0,
     JSON.stringify(await prints()));
@@ -347,7 +365,7 @@ for (const browserType of [chromium, webkit]) {
   check('and the interlining follows each cell', (await page.locator('.print.live').allTextContents()).join() !== 'ki', JSON.stringify(await prints()));
   await openSettings();
   await page.uncheck('#live-interlining');
-  await page.click('#settings-done button');
+  await page.click('#settings-done button.primary');
 
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Slash' : 'Control+Slash');
   check('Command or Ctrl + / opens the instructions', await page.locator('#help[open]').count() === 1);

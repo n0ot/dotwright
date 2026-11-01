@@ -691,6 +691,20 @@ body.has-slate {
   background: radial-gradient(circle at 50% 72%, var(--pit-lit), var(--pit-deep) 72%);
   box-shadow: inset 0 5px 7px rgb(0 0 0 / 40%), 0 1px 0 var(--engraved-light);
 }
+/* Dot numbers, if chosen in Settings; hidden from screen readers, which hear them in each dot's name. */
+.slate-numbers .slate-dot::after {
+  content: attr(data-dot);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: 600 15px/1 system-ui, sans-serif;
+  color: var(--muted);
+  pointer-events: none;
+}
+.slate-numbers .slate-dot[aria-pressed='true']::after {
+  color: rgb(255 255 255 / 85%);
+}
 .slate-dot:active::before {
   transform: scale(0.9);
 }
@@ -1057,9 +1071,35 @@ dialog label.check {
   font-weight: 400;
 }
 .check input {
+  flex: none;
   width: 16px;
   height: 16px;
   accent-color: var(--accent);
+}
+/* A setting that depends on the one above it. */
+dialog label.check.sub {
+  margin-left: 26px;
+}
+dialog label.check:has(input:disabled) {
+  color: var(--muted);
+}
+dialog fieldset {
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+dialog legend {
+  padding: 0;
+  margin-bottom: 2px;
+  font-size: 15px;
+  font-weight: 650;
+}
+#settings-done {
+  justify-content: space-between;
+}
+#settings-done .reset {
+  background: var(--hover);
 }
 .keys-row {
   display: flex;
@@ -1127,4 +1167,38 @@ kbd {
 #print-view {
   white-space: pre;
   resize: none;
+}
+
+/* Dialogs on a phone: room for the settings, and Done always in reach. */
+@media (max-width: 500px), (max-height: 500px) {
+  dialog {
+    padding: 18px 18px;
+  }
+  dialog h2 {
+    margin-bottom: 10px;
+  }
+  dialog label.check {
+    margin: 8px 0;
+  }
+}
+/* Settings always end with Done in reach, even when they scroll. */
+#settings-done {
+  position: sticky;
+  bottom: -18px;
+  margin-bottom: -18px;
+  padding: 12px 0 18px;
+  background: var(--surface);
+}
+/* A phone held sideways: the groups in two columns, so they fit. */
+@media (orientation: landscape) and (max-height: 500px) {
+  #settings-dialog[open] {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 28px;
+    width: min(760px, calc(100% - 32px));
+  }
+  #settings-dialog h2,
+  #settings-done {
+    grid-column: 1 / -1;
+  }
 }

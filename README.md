@@ -23,9 +23,11 @@ Dotwright never changes your braille. There's no "fix" button: you make every co
 - **BRF files**: open existing ones and save your work, in the standard 40-cell, 25-line page format. Your braille is saved exactly as you wrote it, mistakes included.
 - **Private and offline.** Your writing never leaves your computer. After the first visit, Dotwright works without an internet connection. If the page is refreshed by accident, your work is restored from a copy kept in the browser, but saving a BRF file is the way to keep it.
 
+Settings are grouped as Page, Slate, Speech and sound, and Braille keys, with a button to reset them all. The slate's dots can be numbered, which is off by default so as not to give the positions away. One switch turns off all sounds, and the margin bell has its own.
+
 Each cell's empty dot positions are drawn as faint grey points behind the raised dots, like Duxbury's SimBraille, so it's easy to see where each dot sits. They can be turned off in Settings for raised dots only, as on paper.
 
-In Brailler mode, the print reading of each word appears above it once the word is finished, with a space, a new line, or by moving away from it, and that's when it's checked. A word left unfinished on the slate is read when you switch to Brailler, and one left unfinished when the page was closed is read when it opens. To see the reading change with every cell instead, turn on "Interline each word as it is written" in Settings; the word being written is still only checked once it's finished.
+In Brailler mode, the print reading of each word appears above it once the word is finished, with a space, a new line, or by moving away from it, and that's when it's checked. A word left unfinished on the slate is read when you switch to Brailler, and one left unfinished when the page was closed is read when it opens. To see the reading change with every cell instead, turn on "Show the print of a word while writing it" in Settings; the word being written is still only checked once it's finished.
 
 Press Command+/ (Ctrl+/ on Windows and Linux) in Dotwright for the instructions and keyboard shortcuts.
 
