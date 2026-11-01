@@ -346,7 +346,15 @@ input:focus-visible {
     transition: border-color 0.15s, box-shadow 0.15s;
   }
 }
-/* The focus ring goes around the whole page, not just the text area. */
+/*
+ * The focus ring goes around the whole page, not just the text area. The
+ * print view is hidden, so while it has focus the page shows it, dashed.
+ */
+main:has(#print-view:focus-visible) .sheet {
+  border-color: var(--accent);
+  border-style: dashed;
+  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow);
+}
 .sheet:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow);
@@ -517,8 +525,8 @@ input:focus-visible {
   font: 20px/18px 'Dotwright Braille', monospace;
   color: var(--dots);
 }
-.word-popover .ascii {
-  font-family: ui-monospace, monospace;
+.word-popover .dot-numbers {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- Slate ---- */

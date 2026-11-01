@@ -67,6 +67,8 @@ for (const browserType of [chromium, webkit]) {
     (await popover.textContent()).includes('Contraction error') && await showButton.isVisible());
   await showButton.click();
   check('Show correct form reveals it', (await popover.textContent()).includes('&') && await popover.locator('button', { hasText: 'Hide' }).isVisible());
+  check('the correct form is given in dot numbers, not Braille ASCII', (await popover.locator('.dot-numbers').textContent()) === '12346',
+    await popover.locator('.correct').textContent());
   check('Show reference leaves braille unchanged and returns to the document',
     (await ta.inputValue()).startsWith('and & ') && await page.evaluate(() => document.activeElement.id === 'editor'));
   await popover.locator('button', { hasText: 'Hide' }).click();
@@ -139,6 +141,8 @@ for (const browserType of [chromium, webkit]) {
   await page.keyboard.press('Tab');
   const pv = page.locator('#print-view');
   check('Tab reaches the print view', await page.evaluate(() => document.activeElement.id === 'print-view'));
+  check('the page shows the print view has focus', await page.evaluate(() => getComputedStyle(document.querySelector('#sheet')).borderTopStyle === 'dashed'));
+  check('the popover is hidden in the print view', await page.locator('#word-popover').isHidden());
   if (browserType === webkit) {
     await page.waitForTimeout(250);
     check('Safari names the print view on Tab', (await announced(page)).includes('Print interlining'), await announced(page));
@@ -297,6 +301,23 @@ for (const browserType of [chromium, webkit]) {
   check('Enter, Backspace and undo don\'t edit in Slate mode', (await ta.inputValue()) === 'ac ', JSON.stringify(await ta.inputValue()));
   await page.waitForTimeout(80);
   check('braille keys don\'t write in Slate mode', (await ta.inputValue()) === 'ac ' && (await lastSaid(page)).includes('write with the slate'), `${JSON.stringify(await ta.inputValue())} ${await lastSaid(page)}`);
+  // On the mirrored page, sideways keys go the way they point: Right is back through the text.
+  const caretAt = () => ta.evaluate((el) => el.selectionStart);
+  await page.keyboard.press('ArrowRight');
+  check('Right moves back on the mirrored page', (await caretAt()) === 2, await caretAt());
+  await page.waitForTimeout(80);
+  check('and says the cell it moved to', (await lastSaid(page)) === 'space', await lastSaid(page));
+  await page.keyboard.press('ArrowLeft');
+  check('Left moves on', (await caretAt()) === 3, await caretAt());
+  await page.keyboard.press(process.platform === 'darwin' ? 'Alt+ArrowRight' : 'Control+ArrowRight');
+  check('Option or Ctrl + Right goes back a word', (await caretAt()) === 0, await caretAt());
+  await page.keyboard.press('Shift+ArrowLeft');
+  check('Shift selects the way it points', (await ta.evaluate((el) => [el.selectionStart, el.selectionEnd].join())) === '0,1');
+  await page.keyboard.press(LINE_START);
+  check('the left end of the line is its end', (await caretAt()) === 3, await caretAt());
+  await page.keyboard.press(LINE_END);
+  check('the right end is its start', (await caretAt()) === 0, await caretAt());
+  await page.keyboard.press(LINE_START);
   await punch(1);
   await page.click('#slate-next');
   await punch(2, 3, 4, 6);
@@ -460,6 +481,30 @@ for (const browserType of [chromium, webkit]) {
   const nextPrint = await page.locator('.print', { hasText: 'my' }).last().boundingBox();
   const pop = await page.locator('#word-popover').boundingBox();
   check('the popover is above the next line', pop.y + pop.height <= nextPrint.y + 2, `${JSON.stringify(pop)} ${JSON.stringify(nextPrint)}`);
+  // A long line written on the slate is read from its start in Brailler mode.
+  await page.tap('#mode-slate');
+  await page.waitForTimeout(300);
+  await page.tap('#slate-newline');
+  for (let i = 0; i < 4; i++) { await page.tap('.slate-dot[data-dot="1"]'); await page.tap('#slate-next'); }
+  await page.tap('#mode-brailler');
+  await page.waitForTimeout(400);
+  check('back in Brailler mode, a short line is shown from its start', (await scrolled()) === 0, await scrolled());
+  await page.tap('#mode-slate');
+  await page.waitForTimeout(300);
+  await page.tap('#slate-next');
+  for (let i = 0; i < 26; i++) { if (i % 3 < 2) await page.tap('.slate-dot[data-dot="1"]'); await page.tap('#slate-next'); }
+  await page.tap('#mode-brailler');
+  await page.waitForTimeout(400);
+  // The print over the word at the cursor: the last on the cursor's line.
+  const caretPrint = await page.evaluate(() => {
+    const caret = document.querySelector('.caret-spot').getBoundingClientRect();
+    const onLine = [...document.querySelectorAll('.print')].map((e) => e.getBoundingClientRect())
+      .filter((r) => r.bottom <= caret.top + 8 && r.bottom > caret.top - 30);
+    const r = onLine.sort((a, b) => b.right - a.right)[0];
+    return r && { x: r.x, right: r.right, width: innerWidth };
+  });
+  check('and a long one from the start of the word at the cursor, with its print',
+    caretPrint && caretPrint.x >= 0 && caretPrint.right <= caretPrint.width, JSON.stringify(caretPrint));
   check('no page errors on the phone', errors.length === 0, errors.join('; '));
   await context.close();
 
@@ -469,7 +514,8 @@ for (const browserType of [chromium, webkit]) {
   const lpage = await land.newPage();
   await lpage.goto(URL);
   await lpage.waitForFunction(() => !document.querySelector('#editor').disabled);
-  check('empty page says how to start', (await lpage.locator('.empty-hint').textContent()).includes('Slate'));
+  const lhint = await lpage.locator('.empty-hint').textContent();
+  check('empty page says how to start, with the switch below', lhint.includes('Slate') && lhint.includes('below'), lhint);
   await lpage.tap('#mode-slate');
   await lpage.waitForTimeout(300);
   const slateBox = await lpage.locator('#slate').boundingBox();
@@ -483,6 +529,10 @@ for (const browserType of [chromium, webkit]) {
   await lpage.tap('.slate-dot[data-dot="1"]');
   await lpage.tap('#slate-next');
   check('slate writes in landscape', (await lpage.locator('#editor').inputValue()) === 'a');
+  check('the start of the line is in view', await lpage.evaluate(() => {
+    const scroll = document.querySelector('.sheet-scroll');
+    return scroll.scrollLeft >= scroll.scrollWidth - scroll.clientWidth - 1;
+  }));
   await browser.close();
 }
 process.exit(failures ? 1 : 0);

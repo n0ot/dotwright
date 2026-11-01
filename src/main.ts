@@ -1,6 +1,6 @@
 import './style.css';
 import { Announcer } from './announcer';
-import { maskToChar, spell, spokenName } from './brailleAscii';
+import { charToMask, dotsOf, maskToChar, spell, spokenName } from './brailleAscii';
 import { formatBrf, parseBrf } from './brf';
 import { BrailleEditor } from './editor';
 import { checkDocument, type WordFeedback } from './feedback';
@@ -127,6 +127,7 @@ const editor = new BrailleEditor(textarea, {
     say(`Nothing to ${action}`);
   },
   lineFull: endOfLine,
+  moved: announceMove,
   keysOff() {
     if (prefs.sounds) playStop();
     say('In Slate mode, write with the slate.');
@@ -137,6 +138,27 @@ const editor = new BrailleEditor(textarea, {
     }
   },
 });
+
+/**
+ * Says where the caret went on the mirrored page, which moves it by script:
+ * screen readers may not read a caret moved that way. Like a screen reader,
+ * it says the cell after the caret, or the word it's at.
+ */
+function announceMove(by: 'cell' | 'word' | 'line') {
+  const text = editor.text;
+  const at = editor.el.selectionDirection === 'backward' ? editor.el.selectionStart : editor.el.selectionEnd;
+  const ch = text[at];
+  const cellName = ch === undefined ? 'end' : ch === '\n' ? 'new line' : spokenName(ch);
+  if (by !== 'word') return say(cellName);
+  let start = at;
+  // Just past a word, it's that word.
+  if ((ch === undefined || /\s/.test(ch)) && at > 0 && !/\s/.test(text[at - 1])) start--;
+  if (/\s/.test(text[start] ?? ' ')) return say(cellName);
+  while (start > 0 && !/\s/.test(text[start - 1])) start--;
+  let end = start;
+  while (end < text.length && !/\s/.test(text[end])) end++;
+  say(spell(text.slice(start, end)));
+}
 
 /** True just after the cell that leaves a line with 6 cells, where a braillewriter's bell rings. */
 function atBellCell(): boolean {
@@ -426,7 +448,8 @@ slateBeside.addEventListener('change', () => render());
  */
 function emptyHint(): string {
   const touch = coarsePointer.matches;
-  const where = slateBeside.matches ? 'on the right' : 'below';
+  // The switch is beside the page only with the slate, in Slate mode; in Brailler mode it's under the page.
+  const where = slateBeside.matches && side === 'back' ? 'on the right' : 'below';
   if (side === 'back') return `${touch ? 'Tap' : 'Click'} dots on the slate ${where}, then Next.`;
   if (touch) return `To write on this screen, switch to Slate, ${where}.`;
   return `Press ${[...editor.dotKeys.toUpperCase()].join(' ')} together to write a cell, as on a brailler. Or switch to Slate, ${where}.`;
@@ -502,6 +525,9 @@ printView.addEventListener('input', () => render());
 document.addEventListener('selectionchange', followPrintCaret);
 printView.addEventListener('keyup', followPrintCaret);
 printView.addEventListener('mouseup', followPrintCaret);
+// The popover hides while the print view has focus.
+printView.addEventListener('focus', () => render());
+printView.addEventListener('blur', () => render());
 // VoiceOver in Safari speaks only the character at the caret when focus moves
 // between these two fields, without naming the field, so name it.
 if (/Apple/.test(navigator.vendor)) {
@@ -531,7 +557,8 @@ keepCaretOnKeyboardFocus(printView, () => {
  */
 function renderPopover(state: WordState | null, line: number, lineStarts: number[]) {
   const f = state?.feedback;
-  popover.hidden = !feedbackShown() || !state || !f || !isIssue(f);
+  // Not while reading the print view: it's for the mouse, at the document.
+  popover.hidden = !feedbackShown() || !state || !f || !isIssue(f) || document.activeElement === printView;
   if (popover.hidden || !state || !f) return;
   const parts: Node[] = [];
   const label = document.createElement('span');
@@ -545,10 +572,11 @@ function renderPopover(state: WordState | null, line: number, lineStarts: number
       const dots = document.createElement('span');
       dots.className = 'braille';
       dots.textContent = f.reference;
-      const ascii = document.createElement('span');
-      ascii.className = 'ascii';
-      ascii.textContent = f.reference;
-      correct.append('Correct:', dots, ascii);
+      // Dot numbers, as learners know them, rather than Braille ASCII.
+      const numbers = document.createElement('span');
+      numbers.className = 'dot-numbers';
+      numbers.textContent = [...f.reference].map((ch) => (ch === ' ' ? 'space' : dotsOf(charToMask(ch)))).join(' ');
+      correct.append('Correct:', dots, numbers);
       parts.push(correct, popoverButton('Hide', hideReference));
     } else {
       parts.push(popoverButton('Show correct form', revealReference));
@@ -654,15 +682,39 @@ sheet.addEventListener('mousedown', (e) => {
 
 /**
  * Keeps the cell being written in view, above the slate. Where the page is
- * wider than the screen, the cursor is brought back to the middle when it
- * nears an edge, so the cells just written stay in view too.
+ * wider than the screen, the start of the line is shown while the cursor
+ * fits with it: at the left in Brailler mode, and at the right on the
+ * mirrored page in Slate mode. Further along, the cursor is brought back to
+ * the middle when it nears an edge, so the cells just written stay in view.
  */
 function revealSlateCursor() {
   const cursor = overlay.querySelector('.slate-cursor, .caret-spot');
   if (!cursor) return;
   cursor.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  const box = cursor.getBoundingClientRect();
+  let box = cursor.getBoundingClientRect();
   const view = sheetScroll.getBoundingClientRect();
+  const max = sheetScroll.scrollWidth - sheetScroll.clientWidth;
+  if (max <= 0) return;
+  const back = side === 'back';
+  const room = cell * 1.5;
+  // Whether the cursor stays in view with the page scrolled this much further.
+  const fits = (shift: number) => box.left - shift >= view.left + room && box.right - shift <= view.right - room;
+  const lineStartShift = (back ? max : 0) - sheetScroll.scrollLeft;
+  if (fits(lineStartShift)) {
+    sheetScroll.scrollLeft += lineStartShift;
+    return;
+  }
+  // Failing that, the start of the word at the cursor, with its print.
+  const text = editor.text;
+  let wordStart = editor.selectionStart;
+  while (wordStart > 0 && !/\s/.test(text[wordStart - 1])) wordStart--;
+  const toWordStart = (editor.selectionStart - wordStart) * cell;
+  const wordStartShift = back ? box.right + toWordStart - (view.right - 8) : box.left - toWordStart - (view.left + 8);
+  if (wordStartShift !== 0 && fits(wordStartShift) && (back ? wordStartShift > 0 : wordStartShift < 0)) {
+    sheetScroll.scrollLeft += wordStartShift;
+    return;
+  }
+  box = cursor.getBoundingClientRect();
   const margin = view.width * 0.2;
   if (box.left < view.left + margin || box.right > view.right - margin) {
     sheetScroll.scrollLeft += (box.left + box.right) / 2 - (view.left + view.right) / 2;
@@ -840,6 +892,7 @@ function turnOver() {
 function showSide() {
   const back = side === 'back';
   editor.keyboardEdits = !back;
+  editor.mirrored = back;
   // A region only when it holds the slate; in Brailler mode it's just the mode switch.
   if (back) slate.setAttribute('aria-label', 'Slate');
   else slate.removeAttribute('aria-label');
@@ -893,7 +946,8 @@ function renderFileStatus() {
   let detail: string;
   if (isDirty()) detail = savedText === null ? 'not saved to a BRF file' : 'unsaved changes';
   else if (savedBy === 'download') detail = 'saved as a download';
-  else if (savedText !== null) detail = 'all changes saved to the BRF file';
+  else if (savedBy === 'file') detail = 'all changes saved to the BRF file';
+  else if (savedText !== null) detail = 'no changes';
   else detail = 'empty';
   fileStatus.textContent = `${name} · ${detail}`;
   document.title = `${name} — Dotwright`;

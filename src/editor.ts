@@ -24,7 +24,11 @@ export interface EditorEvents {
   lineFull(): void;
   /** The keyboard tried to edit while keyboard editing is off. */
   keysOff(): void;
+  /** The caret was moved by script, as in Slate mode, where screen readers may not follow it. */
+  moved(by: 'cell' | 'word' | 'line'): void;
 }
+
+const isApple = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 
 /** Identifies a key within a chord: the character it types, or " " for the space bar. */
 function chordKey(e: KeyboardEvent): string | null {
@@ -48,6 +52,11 @@ export class BrailleEditor {
    * and erases, and the keyboard only moves the cursor.
    */
   keyboardEdits = true;
+  /**
+   * Whether the page is mirrored, as in Slate mode. Left and right arrow keys
+   * then go the way they point on screen, which is backwards through the text.
+   */
+  mirrored = false;
 
   private pressed = new Set<string>();
   private chord = 0;
@@ -217,6 +226,10 @@ export class BrailleEditor {
 
   private onKeyDown(e: KeyboardEvent): void {
     if (e.isComposing) return;
+    if (this.mirrored && this.moveMirrored(e)) {
+      e.preventDefault();
+      return;
+    }
     const mod = e.ctrlKey || e.metaKey;
     if (mod && !e.altKey && (e.code === 'KeyZ' || e.code === 'KeyY')) {
       e.preventDefault();
@@ -249,6 +262,78 @@ export class BrailleEditor {
     if ((chord || space) && !this.keyboardEdits) this.events.keysOff();
     else if (chord) this.write(maskToChar(chord), 'cell');
     else if (space) this.write(' ', 'space');
+  }
+
+  /**
+   * On the mirrored page, moves the caret the way a sideways key points on
+   * screen: by a cell with an arrow, by a word with Option (Ctrl on Windows
+   * and Linux), and to the left or right end of the line with Command and an
+   * arrow (Home and End on Windows and Linux). Shift selects as it goes.
+   * Returns false for keys it leaves to the browser.
+   */
+  private moveMirrored(e: KeyboardEvent): boolean {
+    let forward: boolean;
+    let by: 'cell' | 'word' | 'line';
+    const wordKey = isApple ? e.altKey : e.ctrlKey;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      // Left on screen is onward through the text, which runs right to left.
+      forward = e.key === 'ArrowLeft';
+      if (isApple && e.metaKey && !e.altKey && !e.ctrlKey) by = 'line';
+      else if (wordKey && !e.metaKey && (isApple ? !e.ctrlKey : !e.altKey)) by = 'word';
+      else if (!e.metaKey && !e.ctrlKey && !e.altKey) by = 'cell';
+      else return false;
+    } else if (!isApple && (e.key === 'Home' || e.key === 'End') && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      // Home and End go to the left and right ends of the line.
+      forward = e.key === 'Home';
+      by = 'line';
+    } else {
+      return false;
+    }
+    const { selectionStart: start, selectionEnd: end, selectionDirection } = this.el;
+    let to: number;
+    if (e.shiftKey) {
+      const anchor = selectionDirection === 'backward' ? end : start;
+      const focus = selectionDirection === 'backward' ? start : end;
+      to = this.stepFrom(focus, forward, by);
+      this.el.setSelectionRange(Math.min(anchor, to), Math.max(anchor, to), to < anchor ? 'backward' : 'forward');
+    } else {
+      const from = forward ? end : start;
+      // An arrow with a selection goes to its end, as usual.
+      to = by === 'cell' && start !== end ? from : this.stepFrom(from, forward, by);
+      this.el.setSelectionRange(to, to);
+    }
+    this.onSelectionChange();
+    this.events.moved(by);
+    return true;
+  }
+
+  /** Where the caret goes from here, a cell, word or line onward or back. */
+  private stepFrom(at: number, forward: boolean, by: 'cell' | 'word' | 'line'): number {
+    const text = this.text;
+    const space = (i: number) => /\s/.test(text[i]);
+    if (by === 'cell') return forward ? Math.min(text.length, at + 1) : Math.max(0, at - 1);
+    if (by === 'line') {
+      if (forward) {
+        const end = text.indexOf('\n', at);
+        return end < 0 ? text.length : end;
+      }
+      return text.lastIndexOf('\n', at - 1) + 1;
+    }
+    let i = at;
+    if (forward) {
+      // To the end of the word, on a Mac; to the start of the next, elsewhere.
+      if (isApple) {
+        while (i < text.length && space(i)) i++;
+        while (i < text.length && !space(i)) i++;
+      } else {
+        while (i < text.length && !space(i)) i++;
+        while (i < text.length && space(i)) i++;
+      }
+    } else {
+      while (i > 0 && space(i - 1)) i--;
+      while (i > 0 && !space(i - 1)) i--;
+    }
+    return i;
   }
 
   private resetChord(): void {
