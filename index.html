@@ -19,8 +19,10 @@
             <circle cx="20.5" cy="8.5" r="3" /><circle cx="20.5" cy="23.5" r="3" />
             <circle class="unraised" cx="11.5" cy="23.5" r="3" /><circle class="unraised" cx="20.5" cy="16" r="3" />
           </svg>
-          <h1>Dotwright</h1>
-          <p class="tagline">Learn by Brailling</p>
+          <div class="brand-text">
+            <h1>Dotwright</h1>
+            <p class="tagline">Learn by Brailling</p>
+          </div>
         </div>
         <button type="button" id="toggle-feedback" class="switch" role="switch" aria-checked="true">
           Feedback<span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
@@ -151,6 +153,10 @@
         Dotwright is for practising writing braille, with feedback on contractions as you go.
         Choose how to write with the switch under the page.
       </p>
+      <p class="small-screen-only phone-first">
+        On a phone, write in Slate mode, unless you have a keyboard connected. Then switch to
+        Brailler mode to read what you wrote, with feedback.
+      </p>
 
       <h3>Brailler mode</h3>
       <p>
@@ -178,7 +184,6 @@
         Dot 1 is at the top right, as on a real slate. To see the dot numbers on the slate, turn
         them on in Settings.
       </p>
-      <p class="small-screen-only">On a phone, use Slate mode, unless you have a keyboard connected.</p>
 
       <h3>Lines and pages</h3>
       <p>
@@ -206,7 +211,8 @@
       </p>
       <p class="small-screen-only">On a phone, New, Open, Save, Settings and these instructions are in the menu at the top.</p>
 
-      <h3>Keyboard shortcuts</h3>
+      <details id="shortcuts-section" class="shortcuts-section" open>
+      <summary><h3>Keyboard shortcuts</h3></summary>
       <table class="shortcuts">
         <thead>
           <tr><th scope="col">Action</th><th scope="col">Keys</th></tr>
@@ -226,6 +232,7 @@
           <tr><td>Announce each cell as it's written, on or off</td><td><kbd class="alt">Alt</kbd>+<kbd>K</kbd></td></tr>
         </tbody>
       </table>
+      </details>
       <form method="dialog" class="dialog-actions"><button class="primary">Close</button></form>
     </dialog>
 

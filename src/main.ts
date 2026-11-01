@@ -1026,6 +1026,8 @@ function discard() {
 
 function openHelp() {
   currentKeys.textContent = describeDotKeys(editor.dotKeys);
+  // Folded away on a touch screen, where they're for a connected keyboard only.
+  byId<HTMLDetailsElement>('shortcuts-section').open = !coarsePointer.matches;
   help.showModal();
 }
 

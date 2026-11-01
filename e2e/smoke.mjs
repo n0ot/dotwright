@@ -369,6 +369,9 @@ for (const browserType of [chromium, webkit]) {
 
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Slash' : 'Control+Slash');
   check('Command or Ctrl + / opens the instructions', await page.locator('#help[open]').count() === 1);
+  check('the top bar is on one line', await page.evaluate(() =>
+    [...document.querySelectorAll('.topbar button:not([hidden]), .topbar .help-link, .tagline')].every((e) => getComputedStyle(e).display === 'none' || e.getBoundingClientRect().height < 40)));
+  check('keyboard shortcuts are shown with a keyboard', await page.locator('#shortcuts-section[open]').count() === 1);
   const modKey = await page.locator('#help kbd.mod').first().textContent();
   check('instructions name the keys for this system', modKey === (process.platform === 'darwin' ? 'Command' : 'Ctrl'), modKey);
   await page.keyboard.press('Escape');
@@ -415,6 +418,11 @@ for (const browserType of [chromium, webkit]) {
   check('once read back, the hint goes', (await page.locator('.empty-hint').count()) === 0);
 
   // On a phone, the document commands are in a menu.
+  await page.tap('#menu-button');
+  await page.tap('#show-help');
+  check('on a phone, the instructions say to use Slate mode, and fold the shortcuts away',
+    await page.locator('#help .phone-first').isVisible() && await page.locator('#shortcuts-section[open]').count() === 0);
+  await page.keyboard.press('Escape');
   check('document commands are in a menu', await page.locator('#new-doc').isHidden() && await page.locator('#menu-button').isVisible());
   await page.tap('#menu-button');
   check('menu opens', await page.locator('#new-doc').isVisible() && (await page.getAttribute('#menu-button', 'aria-expanded')) === 'true');

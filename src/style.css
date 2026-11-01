@@ -161,10 +161,22 @@ main {
   font-weight: 680;
   letter-spacing: -0.015em;
 }
+.brand-text {
+  display: flex;
+  flex-direction: column;
+}
+.brand h1 {
+  line-height: 1.1;
+}
 .tagline {
-  margin: 2px 0 0;
+  margin: 1px 0 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.topbar button,
+.topbar .help-link {
+  white-space: nowrap;
 }
 .actions,
 .toolbar,
@@ -822,22 +834,11 @@ body.has-slate:has(.slate:not(.back)) .sheet {
   padding-bottom: var(--slate-height);
 }
 
-/* ---- Small screens: phones in either orientation ---- */
+/* ---- Narrower windows and phones: the commands go in a menu, so the top bar fits on one line ---- */
 
-@media (max-width: 640px), (max-height: 500px) {
-  body {
-    padding-top: max(12px, env(safe-area-inset-top));
-  }
+@media (max-width: 840px), (max-height: 500px) {
   .tagline {
     display: none;
-  }
-  .topbar {
-    gap: 4px;
-    margin-bottom: 10px;
-  }
-  #toggle-feedback {
-    min-height: 44px;
-    padding: 0 10px;
   }
   /* The document commands, Settings and Instructions go in a menu. */
   .menu-button {
@@ -890,6 +891,22 @@ body.has-slate:has(.slate:not(.back)) .sheet {
     padding: 10px 14px;
     font-size: 16px;
     text-align: left;
+  }
+}
+
+/* ---- Small screens: phones in either orientation ---- */
+
+@media (max-width: 640px), (max-height: 500px) {
+  body {
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+  .topbar {
+    gap: 4px;
+    margin-bottom: 10px;
+  }
+  #toggle-feedback {
+    min-height: 44px;
+    padding: 0 10px;
   }
   .file-status {
     font-size: 12px;
@@ -1031,6 +1048,38 @@ dialog li {
   .small-screen-only {
     display: block;
   }
+}
+.phone-first {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+.shortcuts-section summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+}
+.shortcuts-section summary::-webkit-details-marker {
+  display: none;
+}
+/* A chevron that turns when the shortcuts are shown. */
+.shortcuts-section summary::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  margin: 14px 4px 0 2px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+}
+.shortcuts-section[open] summary::before {
+  transform: rotate(45deg);
+}
+.shortcuts-section summary h3 {
+  display: inline;
 }
 .shortcuts {
   width: 100%;
@@ -1225,5 +1274,18 @@ kbd {
   .word-popover .braille {
     font-size: 17px;
     line-height: 14px;
+  }
+}
+/* On a phone, the keys wrap too, so the descriptions get half the width. */
+@media (max-width: 640px) {
+  .shortcuts td:first-child {
+    width: 50%;
+  }
+  .shortcuts td:last-child {
+    white-space: normal;
+  }
+  .shortcuts kbd {
+    white-space: nowrap;
+    font-size: 12px;
   }
 }
