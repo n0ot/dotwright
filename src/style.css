@@ -753,6 +753,35 @@ body.has-slate {
   }
 }
 
+/*
+ * On the front, the Front / Back switch floats over the page instead of
+ * sitting in a panel, so the page runs to the bottom of the screen. The page
+ * keeps room under its last line to scroll it clear of the switch.
+ */
+.slate:not(.back) {
+  padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-top: 0;
+  box-shadow: none;
+  pointer-events: none;
+}
+.slate:not(.back) .side-switch {
+  pointer-events: auto;
+  background: color-mix(in srgb, var(--hover) 82%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--rule);
+  box-shadow: 0 6px 20px rgb(20 20 30 / 14%);
+}
+body.has-slate:has(.slate:not(.back)) {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+body.has-slate:has(.slate:not(.back)) .sheet {
+  padding-bottom: var(--slate-height);
+}
+
 /* ---- Small screens: phones in either orientation ---- */
 
 @media (max-width: 640px), (max-height: 500px) {

@@ -308,6 +308,17 @@ for (const browserType of [chromium, webkit]) {
   const cursor = await page.locator('.slate-cursor').boundingBox();
   check('cursor is above the slate', cursor.y + cursor.height <= slateTop, `${cursor.y} ${slateTop}`);
   check('empty page has no hint once written', (await page.locator('.empty-hint').count()) === 0);
+  await page.tap('#side-front');
+  await page.waitForTimeout(300);
+  check('front has no slate panel, just the switch',
+    await page.evaluate(() => getComputedStyle(document.querySelector('#slate')).backgroundImage === 'none' && getComputedStyle(document.querySelector('#slate')).borderTopWidth === '0px'));
+  const sheetBottom = (await page.locator('#sheet').boundingBox());
+  const switchBox = await page.locator('.side-switch').boundingBox();
+  check('page runs down behind the switch', sheetBottom.y + sheetBottom.height > switchBox.y + switchBox.height, `${JSON.stringify(sheetBottom)} ${JSON.stringify(switchBox)}`);
+  const cleared = await page.waitForFunction(() => [...document.querySelectorAll('#announcements div')].every((d) => d.textContent === ''), null, { timeout: 10000 }).then(() => true, () => false);
+  check('spoken announcements are cleared from the page', cleared);
+  await page.tap('#side-back');
+  await page.waitForTimeout(300);
 
   // On a phone, the document commands are in a menu.
   check('document commands are in a menu', await page.locator('#new-doc').isHidden() && await page.locator('#menu-button').isVisible());
