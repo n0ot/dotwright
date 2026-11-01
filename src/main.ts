@@ -840,6 +840,9 @@ function turnOver() {
 function showSide() {
   const back = side === 'back';
   editor.keyboardEdits = !back;
+  // A region only when it holds the slate; in Brailler mode it's just the mode switch.
+  if (back) slate.setAttribute('aria-label', 'Slate');
+  else slate.removeAttribute('aria-label');
   sheet.classList.toggle('back', back);
   slate.classList.toggle('back', back);
   // A radio group: one tab stop, on the mode that's chosen.

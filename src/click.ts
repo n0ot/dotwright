@@ -32,7 +32,12 @@ export function playClick(punched: boolean): void {
 }
 
 function audio(): AudioContext {
-  context ??= new AudioContext();
+  if (!context) {
+    // Safari: sounds follow the iPhone's silent switch and mix with other audio, like a game's effects.
+    const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+    if (session) session.type = 'ambient';
+    context = new AudioContext();
+  }
   if (context.state === 'suspended') void context.resume();
   return context;
 }

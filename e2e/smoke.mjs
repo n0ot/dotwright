@@ -235,6 +235,7 @@ for (const browserType of [chromium, webkit]) {
   const pressed = () => page.evaluate(() => [...document.querySelectorAll('.slate-dot[aria-pressed="true"]')].map((b) => b.dataset.dot).join(''));
   check('Brailler mode shows only the mode switch',
     await page.locator('#mode-slate').isVisible() && await page.locator('.slate-cell').isHidden() && await page.locator('#slate-next').isHidden());
+  check('in Brailler mode the switch is not in a Slate region', (await page.getAttribute('#slate', 'aria-label')) === null);
   check('no slate cursor in Brailler mode', (await page.locator('.slate-cursor').count()) === 0);
   check('the mode switch is a radio group with one tab stop',
     (await page.getAttribute('.side-switch', 'role')) === 'radiogroup' &&
@@ -246,6 +247,7 @@ for (const browserType of [chromium, webkit]) {
   check('arrow keys switch to Slate mode, and move focus with it',
     (await page.getAttribute('#mode-slate', 'aria-checked')) === 'true' && await page.evaluate(() => document.activeElement.id === 'mode-slate'));
   await page.focus('#editor');
+  check('in Slate mode the slate is a region', (await page.getAttribute('#slate', 'aria-label')) === 'Slate');
   check('Slate mode shows the slate', await page.locator('.slate-cell').isVisible() && (await page.locator('.slate-cursor').count()) === 1);
   const dotColumn = () => page.evaluate(() => getComputedStyle(document.querySelector('.slate-dot[data-dot="1"]')).gridColumnStart);
   check('slate is mirrored', (await dotColumn()) === '2', await dotColumn());
