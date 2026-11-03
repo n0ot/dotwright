@@ -268,7 +268,7 @@ function speakWordFeedback() {
   if (!state) return say('No word at the cursor.');
   const f = state.feedback;
   if (!f) return say(`Unfinished word: ${spell(state.word.text)}. Feedback appears after Space or Enter.`);
-  say(`${f.print}. ${statusText(f)}${f.status === 'differs' ? ` ${ALT}+R shows the correct form.` : ''}`);
+  say(`${f.print}. ${statusText(f)}`);
 }
 
 function revealReference() {
@@ -343,6 +343,20 @@ function measureCell() {
 const labelFont = (bold: boolean) => `${bold ? '600 ' : ''}14px ${getComputedStyle(document.body).fontFamily}`;
 const measureCtx = document.createElement('canvas').getContext('2d')!;
 
+/**
+ * The overlay is drawn in two parts. The page's print, marks and dot
+ * positions change only with the text or the settings, so they're kept while
+ * the cursor moves: rebuilding hundreds of elements on every arrow key made
+ * Safari with VoiceOver slow on a longer document. The cursor, the highlight
+ * of the word at it, and hints are redrawn each time, under the print.
+ */
+let cursorParts: HTMLElement[] = [];
+/** The first of the print and marks, which the cursor parts go before. */
+let printAnchor: Node | null = null;
+let placingCursorParts = false;
+/** While a part of the page is drawn, the elements placed for it. */
+let collecting: HTMLElement[] | null = null;
+
 function place(className: string, left: number, top: number, width?: number, text?: string): HTMLElement {
   const el = document.createElement('div');
   el.className = className;
@@ -350,26 +364,115 @@ function place(className: string, left: number, top: number, width?: number, tex
   el.style.top = `${top}px`;
   if (width !== undefined) el.style.width = `${width}px`;
   if (text !== undefined) el.textContent = text;
-  overlay.append(el);
+  if (placingCursorParts) {
+    overlay.insertBefore(el, printAnchor);
+    cursorParts.push(el);
+  } else {
+    overlay.append(el);
+    collecting?.push(el);
+  }
   return el;
+}
+
+/** Print label widths, which are measured often and change only with the text. */
+const labelWidths = new Map<string, number>();
+function labelWidth(font: string, text: string): number {
+  const key = `${font}|${text}`;
+  let width = labelWidths.get(key);
+  if (width === undefined) {
+    measureCtx.font = font;
+    width = measureCtx.measureText(text).width;
+    if (labelWidths.size > 5000) labelWidths.clear();
+    labelWidths.set(key, width);
+  }
+  return width;
+}
+
+/**
+ * The parts of the overlay that change only with the text and the settings:
+ * the dot positions, page labels, and each line's print and marks. Each part
+ * is redrawn only when what it shows changes, so writing a cell redraws its
+ * own line, not the whole document.
+ */
+const pageParts = new Map<string, { key: string; nodes: HTMLElement[] }>();
+
+function drawPart(id: string, key: string, draw: () => void, seen: Set<string>) {
+  seen.add(id);
+  const old = pageParts.get(id);
+  if (old?.key === key) return;
+  for (const el of old?.nodes ?? []) el.remove();
+  collecting = [];
+  draw();
+  pageParts.set(id, { key, nodes: collecting });
+  collecting = null;
+}
+
+function renderPage(states: WordState[], lineOf: (offset: number) => number, lineStarts: number[]) {
+  const display = editor.text;
+  const seen = new Set<string>();
+  if (prefs.shadowDots) {
+    drawPart('shadows', display, () => {
+      // Under everything else.
+      overlay.prepend(place('dot-shadows', 0, 0, undefined, display));
+    }, seen);
+  }
+
+  drawPart('pages', String(lineStarts.length), () => {
+    for (let i = 0; i < lineStarts.length; i += LINES_PER_PAGE) {
+      if (i > 0) place('page-break', 0, TOP + i * LINE);
+      place('page-label', 0, TOP + i * LINE + 6, undefined, `Page ${i / LINES_PER_PAGE + 1}`).style.left = 'auto';
+    }
+  }, seen);
+
+  if (feedbackShown()) {
+    const settings = [cell, labelFont(false), prefs.liveInterlining].join('|');
+    // Each line's words, with what's shown for them.
+    const byLine = new Map<number, { word: Word; feedback: WordFeedback; live: boolean }[]>();
+    for (const state of states) {
+      const { word } = state;
+      // The word being written is only read, not checked, and only if asked for.
+      const live = !state.feedback && prefs.liveInterlining;
+      const feedback = state.feedback ?? (live ? checkDocument(editor.text).get(word.start)! : null);
+      if (!feedback) continue;
+      const line = lineOf(word.start);
+      let list = byLine.get(line);
+      if (!list) byLine.set(line, (list = []));
+      list.push({ word, feedback, live });
+    }
+    for (const [line, words] of byLine) {
+      // Where the words are within the line, so a cell written earlier in the document doesn't redraw it.
+      const at = lineStarts[line];
+      const key = [settings, line, ...words.map(({ word, feedback, live }) =>
+        `${word.start - at}:${word.end - at}:${feedback.status}:${live}:${feedback.print}`)].join('\u0000');
+      drawPart(`line ${line}`, key, () => {
+        let lastRight = -Infinity;
+        for (const { word, feedback, live } of words) {
+          const x = PAD + (word.start - lineStarts[line]) * cell;
+          const top = line * LINE;
+          const issue = !live && isIssue(feedback);
+          // Print is usually wider than its braille; shift labels right rather than overlap.
+          const labelX = Math.max(x, lastRight + 6);
+          lastRight = labelX + labelWidth(labelFont(issue), feedback.print);
+          place(`print${issue ? ` ${feedback.status}` : ''}${live ? ' live' : ''}`, labelX, top + GLYPH_TOP - 19, undefined, feedback.print);
+          if (issue) place(`mark ${feedback.status}`, x, top + GLYPH_TOP + FONT_SIZE * 0.86, (word.end - word.start) * cell);
+        }
+      }, seen);
+    }
+  }
+
+  for (const [id, part] of pageParts) {
+    if (seen.has(id)) continue;
+    for (const el of part.nodes) el.remove();
+    pageParts.delete(id);
+  }
 }
 
 function render() {
   const display = editor.text;
   const lineStarts = [0];
   for (let i = 0; i < display.length; i++) if (display[i] === '\n') lineStarts.push(i + 1);
-  textarea.style.height = `${lineStarts.length * LINE + 2 * TOP}px`;
-  overlay.replaceChildren();
-  if (prefs.shadowDots) place('dot-shadows', 0, 0, undefined, display);
-  if (!display) place('empty-hint', PAD, TOP + LINE + 8, undefined, emptyHint());
-  else if (side === 'back' && !checkedSlateWork) {
-    // After a line on the slate, on the empty line it starts: how to read it back.
-    const at = editor.selectionStart;
-    const line = lineStarts.length - 1;
-    if (line > 0 && at === display.length && lineStarts[line] === at) {
-      place('empty-hint', PAD, TOP + (line + 1) * LINE + 8, undefined, `To read what you wrote, with feedback, switch to Brailler, ${slateBeside.matches ? 'on the right' : 'below'}.`);
-    }
-  }
+  const height = `${lineStarts.length * LINE + 2 * TOP}px`;
+  if (textarea.style.height !== height) textarea.style.height = height;
 
   const lineOf = (offset: number) => {
     let i = lineStarts.length - 1;
@@ -377,12 +480,24 @@ function render() {
     return i;
   };
 
-  for (let i = 0; i < lineStarts.length; i += LINES_PER_PAGE) {
-    if (i > 0) place('page-break', 0, TOP + i * LINE);
-    place('page-label', 0, TOP + i * LINE + 6, undefined, `Page ${i / LINES_PER_PAGE + 1}`).style.left = 'auto';
+  const states = wordStates();
+  for (const el of cursorParts) el.remove();
+  cursorParts = [];
+  placingCursorParts = false;
+  renderPage(states, lineOf, lineStarts);
+  printAnchor = overlay.querySelector('.print, .mark');
+  placingCursorParts = true;
+
+  if (!display) place('empty-hint', PAD, TOP + LINE + 8, undefined, emptyHint());
+  else if (side === 'back' && !checkedSlateWork) {
+    // After a line on the slate, on the empty line it starts: how to read it back.
+    const at = editor.selectionStart;
+    const line = lineStarts.length - 1;
+    if (line > 0 && at === display.length && lineStarts[line] === at) {
+      place('empty-hint', PAD, TOP + (line + 1) * LINE + 8, undefined, `To check what you wrote, switch to Brailler, ${slateBeside.matches ? 'on the right' : 'below'}.`);
+    }
   }
 
-  const states = wordStates();
   const caretWord = wordAt(
     states.map((s) => s.word),
     editor.selectionStart,
@@ -405,31 +520,7 @@ function render() {
       .style.height = `${FONT_SIZE * 1.04 + 8}px`;
     if (onSlate && slateMask) place('slate-preview', PAD + col * cell, TOP + line * LINE, undefined, maskToChar(slateMask));
   }
-
-  if (feedbackShown()) {
-    let lastLine = -1;
-    let lastRight = 0;
-    for (const state of states) {
-      const { word } = state;
-      // The word being written is only read, not checked, and only if asked for.
-      const live = !state.feedback && prefs.liveInterlining;
-      const feedback = state.feedback ?? (live ? checkDocument(editor.text).get(word.start)! : null);
-      if (!feedback) continue;
-      const line = lineOf(word.start);
-      const col = word.start - lineStarts[line];
-      const x = PAD + col * cell;
-      const top = line * LINE;
-      const issue = !live && isIssue(feedback);
-      // Print is usually wider than its braille; shift labels right rather than overlap.
-      measureCtx.font = labelFont(issue);
-      const labelWidth = measureCtx.measureText(feedback.print).width;
-      const labelX = line === lastLine ? Math.max(x, lastRight + 6) : x;
-      lastLine = line;
-      lastRight = labelX + labelWidth;
-      place(`print${issue ? ` ${feedback.status}` : ''}${live ? ' live' : ''}`, labelX, top + GLYPH_TOP - 19, undefined, feedback.print);
-      if (issue) place(`mark ${feedback.status}`, x, top + GLYPH_TOP + FONT_SIZE * 0.86, (word.end - word.start) * cell);
-    }
-  }
+  placingCursorParts = false;
 
   const caretState = states.find((s) => s.word === caretWord) ?? null;
   renderPopover(caretState, caretState ? lineOf(caretState.word.start) : 0, lineStarts);
@@ -883,7 +974,7 @@ function turnOver() {
   else setTimeout(revealSlateCursor, 200);
   say(
     side === 'back'
-      ? 'Slate mode. The page is mirrored, as on a slate, with no feedback. Write with the slate.'
+      ? 'Slate mode, with no feedback.'
       : 'Brailler mode.',
   );
 }
@@ -944,9 +1035,9 @@ const isDirty = () => editor.text !== (savedText ?? '');
 function renderFileStatus() {
   const name = fileName ?? 'New document';
   let detail: string;
-  if (isDirty()) detail = savedText === null ? 'not saved to a BRF file' : 'unsaved changes';
-  else if (savedBy === 'download') detail = 'saved as a download';
-  else if (savedBy === 'file') detail = 'all changes saved to the BRF file';
+  if (isDirty()) detail = savedText === null ? 'not saved' : 'unsaved changes';
+  else if (savedBy === 'download') detail = 'downloaded';
+  else if (savedBy === 'file') detail = 'saved';
   else if (savedText !== null) detail = 'no changes';
   else detail = 'empty';
   fileStatus.textContent = `${name} · ${detail}`;
@@ -1024,7 +1115,7 @@ async function save(saveAs: boolean) {
     savedBy = result.method;
     updateRecovery();
     renderFileStatus();
-    say(result.method === 'file' ? `Saved ${fileName}.` : `Downloaded ${fileName}. It is in your downloads folder.`);
+    say(result.method === 'file' ? `Saved ${fileName}.` : `Downloaded ${fileName}.`);
   } catch (err) {
     say(`Could not save the BRF file. ${err instanceof Error ? err.message : ''}`);
   } finally {
@@ -1076,7 +1167,7 @@ function discard() {
   clearRecovery();
   render();
   textarea.focus();
-  say('New, empty document.');
+  say('New document.');
 }
 
 // ---- Commands -------------------------------------------------------------
@@ -1351,8 +1442,7 @@ async function start() {
   render();
   if (copy?.text) {
     say(
-      `Restored your document from this browser's recovery copy.${isDirty() ? ' It has changes not saved to a BRF file.' : ''}` +
-        ' The recovery copy is kept only in this browser and is lost if browser data is cleared, so save a BRF file to keep your work.',
+      `Restored your document from this browser.${isDirty() ? ' It has changes not saved to a BRF file.' : ''}`,
     );
   }
 }

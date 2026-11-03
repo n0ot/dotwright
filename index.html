@@ -121,7 +121,7 @@
       </fieldset>
       <fieldset>
         <legend>Speech and sound</legend>
-        <label class="check"><input type="checkbox" id="echo-cells" /> Announce each cell as it is entered</label>
+        <label class="check"><input type="checkbox" id="echo-cells" /> Announce each cell</label>
         <label class="check"><input type="checkbox" id="sounds" /> Play sounds</label>
         <label class="check sub"><input type="checkbox" id="margin-bell" /> Ring a bell near the end of a line</label>
       </fieldset>
@@ -150,68 +150,60 @@
     <dialog id="help" aria-labelledby="help-title">
       <h2 id="help-title" tabindex="-1" autofocus>Instructions</h2>
       <p>
-        Dotwright is for practising writing braille, with feedback on contractions as you go.
-        Choose how to write with the switch under the page.
+        Practise writing contracted braille, with feedback on each word. Choose how to write with
+        the switch under the page.
       </p>
       <p class="small-screen-only phone-first">
-        On a phone, write in Slate mode, unless you have a keyboard connected. Then switch to
-        Brailler mode to read what you wrote, with feedback.
+        On a phone without a keyboard, write in Slate mode, then switch to Brailler mode to check it.
       </p>
 
       <h3>Brailler mode</h3>
       <p>
-        Write the way you would on a braillewriter, with six keys on your keyboard. Press the keys
-        of a cell together, then let go. The braille appears as you'd read it, with the print over
-        each word. <span id="current-keys"></span>
+        Write as on a braillewriter: press the keys of a cell together, then let go.
+        <span id="current-keys"></span> The keys can be changed in Settings.
       </p>
       <p>
-        Space and Enter work as on a brailler, and finishing a word with either shows its feedback.
-        Backspace, the arrow keys and undo work as usual. You can change the six keys in Settings.
+        A word is checked when you finish it with Space or Enter. Backspace, the arrow keys and
+        undo work as usual.
       </p>
 
       <h3>Slate mode</h3>
       <p>
-        Write the way you would with a slate and stylus. The page is turned over, as on a real
-        slate: it's mirrored, lines run from right to left, and dots are pressed in. There's no
-        feedback until you switch back to Brailler mode, just as you'd take the paper out and turn
-        it over to check it.
+        Write as with a slate and stylus: the page is mirrored and lines run right to left. There's
+        no feedback until you switch back to Brailler mode, as you'd turn the paper over to check it.
       </p>
       <p>
-        Tap or click dots on the slate under the page to set them, then Next to write the cell and
-        move on. Next with no dots writes a space. <span class="delete-key-name">Delete</span>
-        takes back the last cell, and New line starts the next line. Tap the page to move the
-        cursor. The keyboard only moves the cursor in Slate mode, so you practise with the slate.
-        The left and right arrow keys go the way they point on the mirrored page, so Left moves on
-        to the next cell.
-        Dot 1 is at the top right, as on a real slate. To see the dot numbers on the slate, turn
-        them on in Settings.
+        Tap or click dots to set them, then Next to write the cell. Next with no dots writes a
+        space, <span class="delete-key-name">Delete</span> erases the last cell, and New line
+        starts the next line. Dot 1 is at the top right; dot numbers can be shown in Settings.
+      </p>
+      <p>
+        Tap the page to move the cursor. The keyboard only moves it, and the arrow keys go the way
+        they point on the mirrored page.
       </p>
 
       <h3>Lines and pages</h3>
       <p>
-        Lines are 40 cells and pages are 25 lines, as in a BRF file. As on a brailler, a bell rings
-        near the end of a line, and a full line takes nothing more until you start a new one. If a
-        word doesn't fit, delete it and write it on the next line.
+        Lines are 40 cells and pages 25 lines. A bell rings near the end of a line, and a full line
+        takes nothing more: if a word doesn't fit, delete it and write it on the next line.
       </p>
 
       <h3>Feedback</h3>
       <p>
-        In Brailler mode, a word with a contraction error is underlined with a wavy line, and the
-        print over it shows how it reads. Click or tap the word to see the correct form. With a
-        screen reader, moving onto the word says "contraction error".
+        The print over each word shows how it reads. A word with a contraction error has a wavy
+        underline: click or tap it to see the correct form. With a screen reader, moving onto it
+        says "contraction error".
       </p>
       <p>
-        <kbd>Tab</kbd> from the braille goes to the print view: the print of each line, to read
-        through. Moving in it moves the braille cursor to the same word.
+        <kbd>Tab</kbd> goes to the print view, to read the print line by line. The braille cursor
+        follows it.
       </p>
 
       <h3>Saving your work</h3>
       <p>
-        Save a BRF file to keep your work. Dotwright also keeps a copy in this browser in case the
-        page is closed or refreshed, but only in this browser on this device, and it's lost if
-        browser data is cleared. Your braille never leaves your device.
+        Save a BRF file to keep your work. If the page is closed or refreshed, it's restored from a
+        copy in this browser, which is lost if browser data is cleared. Nothing is sent anywhere.
       </p>
-      <p class="small-screen-only">On a phone, New, Open, Save, Settings and these instructions are in the menu at the top.</p>
 
       <details id="shortcuts-section" class="shortcuts-section" open>
       <summary><h3>Keyboard shortcuts</h3></summary>
