@@ -1,6 +1,8 @@
 const STORAGE_KEY = 'dotwright.prefs.v2';
 
 /** Per-viewer display and speech preferences, kept in this browser. */
+export type FeedbackWhen = 'cell' | 'word' | 'line';
+
 export interface Prefs {
   /** Show faint points at unraised dot positions. */
   shadowDots: boolean;
@@ -11,10 +13,14 @@ export interface Prefs {
   /** Number the slate's dots, for a learner still finding the mirrored positions. Off: it gives them away. */
   slateNumbers: boolean;
   /**
-   * Interline the word being written after every cell, not only once it's
-   * finished. Off by default: the reading changing as she writes distracts.
+   * When feedback is given: the print of the word being written after every
+   * cell (it's still only checked once finished), each word once it's
+   * finished, or each line once it's finished. Words by default: the reading
+   * changing with every cell distracts some learners.
    */
-  liveInterlining: boolean;
+  feedbackWhen: FeedbackWhen;
+  /** Feedback on at all; the Feedback switch, and Off in Settings. */
+  feedbackOn: boolean;
   /** Ring a bell near the end of a line, like a braillewriter's margin bell, when sounds are on. */
   marginBell: boolean;
   /**
@@ -30,13 +36,18 @@ export const DEFAULTS: Readonly<Prefs> = {
   sounds: true,
   slateNumbers: false,
   marginBell: true,
-  liveInterlining: false,
+  feedbackWhen: 'word',
+  feedbackOn: true,
   side: 'front',
 };
 
 export function loadPrefs(): Prefs {
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Partial<Prefs>) };
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Partial<Prefs> & { liveInterlining?: boolean };
+    // Interlining as each cell is written used to be a setting of its own.
+    if (stored.liveInterlining && !stored.feedbackWhen) stored.feedbackWhen = 'cell';
+    delete stored.liveInterlining;
+    return { ...DEFAULTS, ...stored };
   } catch {
     return { ...DEFAULTS };
   }

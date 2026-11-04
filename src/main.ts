@@ -11,8 +11,9 @@ import { keepCaretOnKeyboardFocus } from './focusCaret';
 import { initLouis } from './louis';
 import { playBell, playClick, playStop } from './click';
 import { SLATE_ICONS } from './slateIcons';
-import { DEFAULTS as DEFAULT_PREFS, loadPrefs, savePrefs } from './prefs';
+import { DEFAULTS as DEFAULT_PREFS, loadPrefs, savePrefs, type FeedbackWhen } from './prefs';
 import { clearRecovery, loadRecovery, writeRecovery } from './recovery';
+import { holdOffOptionTyping } from './optionKeys';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -25,6 +26,8 @@ const feedbackButton = byId('toggle-feedback');
 const saveAsButton = byId('save-as-doc');
 const help = byId<HTMLDialogElement>('help');
 const printView = byId<HTMLTextAreaElement>('print-view');
+holdOffOptionTyping(textarea);
+holdOffOptionTyping(printView);
 const currentKeys = byId('current-keys');
 const saveDialog = byId<HTMLDialogElement>('save-dialog');
 const saveForm = byId<HTMLFormElement>('save-form');
@@ -44,7 +47,8 @@ const soundsInput = byId<HTMLInputElement>('sounds');
 const slateNumbersInput = byId<HTMLInputElement>('slate-numbers');
 const echoCellsInput = byId<HTMLInputElement>('echo-cells');
 const marginBellInput = byId<HTMLInputElement>('margin-bell');
-const liveInterliningInput = byId<HTMLInputElement>('live-interlining');
+/** When feedback is given, or Off, in Settings. */
+const feedbackWhenInputs = [...document.querySelectorAll<HTMLInputElement>('input[name="feedback-when"]')];
 
 /**
  * The page's geometry, smaller on narrow screens such as phones. Set on the
@@ -74,8 +78,8 @@ function setGeometry() {
 setGeometry();
 
 let cell = FONT_SIZE * 0.6;
-let feedbackOn = true;
 const prefs = loadPrefs();
+let feedbackOn = prefs.feedbackOn;
 /** Apple keyboards: Command and Option, and the Delete key, instead of Ctrl, Alt and Backspace. */
 const isApple = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 const ALT = isApple ? 'Option' : 'Alt';
@@ -101,6 +105,8 @@ let revealedAt: number | null = null;
 let recoveryTimer = 0;
 /** Start of the word with an error that the caret is in, for "contraction error" announcements. */
 let errorWordStart: number | null = null;
+/** The reading last announced for a cell, so a cell that doesn't change it is named instead. */
+let lastReading: { start: number; print: string } | null = null;
 
 const announcer = new Announcer(byId('announcements'));
 const say = (message: string) => announcer.say(message);
@@ -121,7 +127,15 @@ const editor = new BrailleEditor(textarea, {
     render();
   },
   cell(ch) {
-    if (echoCells) say(spokenName(ch));
+    if (!echoCells) return;
+    // With feedback as each cell is written, the cell is announced as the page
+    // shows it: by the word's reading so far, in place of the cell's name. A
+    // cell that doesn't change the reading, like a capital sign, is named.
+    const word = feedbackShown() && prefs.feedbackWhen === 'cell' ? stateAtCaret()?.word : undefined;
+    const print = word ? checkDocument(editor.text).get(word.start)?.print : undefined;
+    const changed = print && !(lastReading?.start === word!.start && lastReading.print === print);
+    lastReading = word && print ? { start: word.start, print } : null;
+    say(changed ? print : spokenName(ch));
   },
   nothingTo(action) {
     say(`Nothing to ${action}`);
@@ -192,9 +206,9 @@ interface WordState {
 
 function wordStates(): WordState[] {
   const words = editor.words();
-  const unfinished = editor.unfinishedWord(words);
+  const unfinished = editor.unfinishedWords(words);
   const feedback = checkDocument(editor.text);
-  return words.map((word) => ({ word, feedback: word === unfinished ? null : feedback.get(word.start)! }));
+  return words.map((word) => ({ word, feedback: unfinished.has(word) ? null : feedback.get(word.start)! }));
 }
 
 function stateAtCaret(): WordState | null {
@@ -245,14 +259,38 @@ function announceErrorChange() {
   else if (was !== null) say('out of contraction error');
 }
 
+/**
+ * What Space or Enter finishes is read as it now appears over the braille:
+ * the word, or with feedback by the line, the line and how many errors it has.
+ * With feedback as each cell is written, the word was heard as it was written,
+ * so only its error is said.
+ */
 function announceCompletedWord(kind: 'space' | 'newline') {
   const caret = editor.selectionStart;
-  const word = editor.words().find((w) => w.end === caret - 1);
+  const feedback = checkDocument(editor.text);
+  const name = kind === 'space' ? 'space' : 'new line';
   const parts: string[] = [];
-  if (echoCells) parts.push(kind === 'space' ? 'space' : 'new line');
-  if (feedbackShown() && word) {
-    const f = checkDocument(editor.text).get(word.start)!;
-    if (isIssue(f)) parts.push(issueName(f));
+  const when = prefs.feedbackWhen;
+  if (feedbackShown() && when === 'line') {
+    if (kind === 'newline') {
+      const end = caret - 1;
+      const start = editor.text.lastIndexOf('\n', end - 1) + 1;
+      const words = editor.words().filter((w) => w.start >= start && w.end <= end);
+      const issues = words.filter((w) => isIssue(feedback.get(w.start)!));
+      if (words.length) parts.push(words.map((w) => feedback.get(w.start)!.print).join(' '));
+      if (issues.length === 1) parts.push(issueName(feedback.get(issues[0].start)!));
+      else if (issues.length) parts.push(`${issues.length} errors`);
+    }
+    if (echoCells) parts.push(name);
+  } else if (feedbackShown()) {
+    const word = editor.words().find((w) => w.end === caret - 1);
+    const f = word && feedback.get(word.start)!;
+    if (f && when === 'word') parts.push(f.print);
+    if (f && isIssue(f)) parts.push(issueName(f));
+    // The word says a space finished it; a new line is still worth naming.
+    if (echoCells && !(f && when === 'word' && kind === 'space')) parts.push(name);
+  } else if (echoCells) {
+    parts.push(name);
   }
   if (parts.length) say(parts.join(', '));
 }
@@ -262,23 +300,40 @@ function dropRevealIfMoved() {
   if (stateAtCaret()?.word.start !== revealedAt) revealedAt = null;
 }
 
+/** What gives feedback on what's being written. */
+/**
+ * The word at the caret, for when the learner asks about it. Asking is
+ * deliberate, so a word is checked as soon as it's finished, even while the
+ * page waits for the end of its line; only the word being written isn't.
+ */
+function askedAbout(): { word: Word; feedback: WordFeedback; unfinished: boolean } | null {
+  const words = editor.words();
+  const word = wordAt(words, editor.selectionStart);
+  if (!word) return null;
+  return {
+    word,
+    feedback: checkDocument(editor.text).get(word.start)!,
+    unfinished: editor.unfinishedWords(words, 'word').has(word),
+  };
+}
+
 function speakWordFeedback() {
   if (!feedbackShown()) return say(feedbackHiddenMessage());
-  const state = stateAtCaret();
-  if (!state) return say('No word at the cursor.');
-  const f = state.feedback;
-  if (!f) return say(`Unfinished word: ${spell(state.word.text)}. Feedback appears after Space or Enter.`);
+  const asked = askedAbout();
+  if (!asked) return say('No word at the cursor.');
+  const f = asked.feedback;
+  if (asked.unfinished) return say(`${f.print}, so far. Checked once the word is finished.`);
   say(`${f.print}. ${statusText(f)}`);
 }
 
 function revealReference() {
   if (!feedbackShown()) return say(feedbackHiddenMessage());
-  const state = stateAtCaret();
-  if (!state) return say('No word at the cursor.');
-  const f = state.feedback;
-  if (!f) return say('Finish the word with Space or Enter first.');
+  const asked = askedAbout();
+  if (!asked) return say('No word at the cursor.');
+  const f = asked.feedback;
+  if (asked.unfinished) return say('Finish the word first, with Space or Enter.');
   if (!f.reference) return say(statusText(f));
-  revealedAt = state.word.start;
+  revealedAt = asked.word.start;
   render();
   say(
     f.reference === f.braille
@@ -319,13 +374,20 @@ function moveToIssue(direction: 1 | -1) {
 }
 
 function toggleFeedback() {
-  feedbackOn = !feedbackOn;
+  setFeedbackOn(!feedbackOn);
+  say(feedbackOn ? 'Feedback on.' : 'Feedback off.');
+}
+
+/** The Feedback switch. Remembered. */
+function setFeedbackOn(on: boolean) {
+  feedbackOn = on;
+  prefs.feedbackOn = on;
+  savePrefs(prefs);
   feedbackButton.setAttribute('aria-checked', String(feedbackOn));
   if (!feedbackShown() && document.activeElement === printView) textarea.focus();
   revealedAt = null;
   errorWordStart = errorWordAtCaret();
   render();
-  say(feedbackOn ? 'Feedback on.' : 'Feedback off.');
 }
 
 // ---- Rendering ------------------------------------------------------------
@@ -425,13 +487,13 @@ function renderPage(states: WordState[], lineOf: (offset: number) => number, lin
   }, seen);
 
   if (feedbackShown()) {
-    const settings = [cell, labelFont(false), prefs.liveInterlining].join('|');
+    const settings = [cell, labelFont(false), prefs.feedbackWhen].join('|');
     // Each line's words, with what's shown for them.
     const byLine = new Map<number, { word: Word; feedback: WordFeedback; live: boolean }[]>();
     for (const state of states) {
       const { word } = state;
       // The word being written is only read, not checked, and only if asked for.
-      const live = !state.feedback && prefs.liveInterlining;
+      const live = !state.feedback && prefs.feedbackWhen === 'cell';
       const feedback = state.feedback ?? (live ? checkDocument(editor.text).get(word.start)! : null);
       if (!feedback) continue;
       const line = lineOf(word.start);
@@ -1189,9 +1251,8 @@ function setEchoCells(on: boolean) {
 }
 
 /** The checkboxes in Settings, each with the preference it sets. */
-const checkboxSettings: [HTMLInputElement, 'shadowDots' | 'liveInterlining' | 'slateNumbers' | 'sounds' | 'marginBell'][] = [
+const checkboxSettings: [HTMLInputElement, 'shadowDots' | 'slateNumbers' | 'sounds' | 'marginBell'][] = [
   [showEmptyDots, 'shadowDots'],
-  [liveInterliningInput, 'liveInterlining'],
   [slateNumbersInput, 'slateNumbers'],
   [soundsInput, 'sounds'],
   [marginBellInput, 'marginBell'],
@@ -1200,6 +1261,8 @@ const checkboxSettings: [HTMLInputElement, 'shadowDots' | 'liveInterlining' | 's
 /** Shows the preferences in Settings, and applies them to the page. */
 function applyPrefs() {
   for (const [input, key] of checkboxSettings) input.checked = prefs[key];
+  for (const input of feedbackWhenInputs) input.checked = input.value === prefs.feedbackWhen;
+  editor.finishedBy = prefs.feedbackWhen === 'line' ? 'line' : 'word';
   echoCellsInput.checked = echoCells;
   // The bell is one of the sounds.
   marginBellInput.disabled = !prefs.sounds;
@@ -1215,6 +1278,14 @@ for (const [input, key] of checkboxSettings) {
   });
 }
 echoCellsInput.addEventListener('change', () => setEchoCells(echoCellsInput.checked));
+for (const input of feedbackWhenInputs) {
+  input.addEventListener('change', () => {
+    if (!input.checked) return;
+    prefs.feedbackWhen = input.value as FeedbackWhen;
+    savePrefs(prefs);
+    applyPrefs();
+  });
+}
 
 function showDotKeys(keys: string) {
   dotKeysInput.value = Array.from(keys).join(' ');
@@ -1229,9 +1300,10 @@ function openSettings() {
 }
 
 byId('settings-reset').addEventListener('click', () => {
-  // Everything in Settings; the mode and the Feedback switch aren't settings.
+  // Everything in Settings, the Feedback switch included; the mode isn't a setting.
   for (const [, key] of checkboxSettings) prefs[key] = DEFAULT_PREFS[key];
-  savePrefs(prefs);
+  prefs.feedbackWhen = DEFAULT_PREFS.feedbackWhen;
+  setFeedbackOn(DEFAULT_PREFS.feedbackOn);
   setEchoCells(DEFAULT_PREFS.echoCells);
   editor.dotKeys = DEFAULT_DOT_KEYS;
   saveDotKeys(DEFAULT_DOT_KEYS);
@@ -1428,6 +1500,8 @@ async function start() {
   showSide();
   applyPointer();
   document.body.classList.toggle('slate-numbers', prefs.slateNumbers);
+  feedbackButton.setAttribute('aria-checked', String(feedbackOn));
+  editor.finishedBy = prefs.feedbackWhen === 'line' ? 'line' : 'word';
   editor.dotKeys = loadDotKeys();
 
   const copy = loadRecovery();

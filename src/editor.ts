@@ -97,9 +97,30 @@ export class BrailleEditor {
     return wordsOf(this.text);
   }
 
-  /** The word the learner is still entering, which must not be flagged yet. */
-  unfinishedWord(words = this.words()): Word | null {
-    return this.editing ? wordAt(words, this.el.selectionStart) : null;
+  /**
+   * Whether feedback waits for the end of the word being written, or of its
+   * line: while the learner is still writing a line, none of it is checked.
+   */
+  finishedBy: 'word' | 'line' = 'word';
+
+  /** The words the learner is still entering, which must not be checked yet. */
+  unfinishedWords(words = this.words(), by = this.finishedBy): Set<Word> {
+    if (!this.editing) return new Set();
+    const caret = this.el.selectionStart;
+    if (by === 'word') {
+      // The word last written in, while the caret is still in it.
+      const word = wordAt(words, this.editAnchor);
+      return new Set(word && word === wordAt(words, caret) ? [word] : []);
+    }
+    const start = this.text.lastIndexOf('\n', caret - 1) + 1;
+    const newline = this.text.indexOf('\n', caret);
+    const end = newline < 0 ? this.text.length : newline;
+    return new Set(words.filter((w) => w.start >= start && w.end <= end));
+  }
+
+  /** Where the line at this offset starts. */
+  private lineStartAt(offset: number): number {
+    return this.text.lastIndexOf('\n', offset - 1) + 1;
   }
 
   load(text: string): void {
@@ -238,6 +259,8 @@ export class BrailleEditor {
       else this.undo();
       return;
     }
+    // Option+letter types a symbol on a Mac (Option+W is ∑); the shortcuts use them instead.
+    if (e.altKey && !mod && e.key.length === 1) e.preventDefault();
     if (mod || e.altKey) return;
     const id = chordKey(e);
     const dot = id === null ? -1 : Array.from(this.dotKeys).indexOf(id);
@@ -379,6 +402,12 @@ export class BrailleEditor {
       return;
     }
     if (this.executing) return;
+    // Only six-key entry writes braille. Typing that gets past the keys, like
+    // a symbol typed with Option, is refused before a screen reader hears it.
+    if (e.inputType === 'insertText') {
+      e.preventDefault();
+      return;
+    }
     const kind =
       e.inputType.startsWith('delete')
         ? e.inputType === 'deleteByCut'
@@ -428,7 +457,8 @@ export class BrailleEditor {
     caret += wrapped.inserted.filter((offset) => offset < caret).length;
     this.apply(wrapped.text, caret, caret);
 
-    this.editing = kind === 'cell' || kind === 'delete';
+    // A space finishes a word, but not a line.
+    this.editing = kind === 'cell' || kind === 'delete' || (kind === 'space' && this.finishedBy === 'line');
     this.editAnchor = caret;
     this.events.change(kind);
   }
@@ -438,7 +468,10 @@ export class BrailleEditor {
     const key = `${this.el.selectionStart}:${this.el.selectionEnd}`;
     if (key === this.lastSelection) return;
     this.lastSelection = key;
-    if (this.editing) {
+    if (this.editing && this.finishedBy === 'line') {
+      // Still writing the line while the caret stays on it.
+      if (this.lineStartAt(this.el.selectionStart) !== this.lineStartAt(this.editAnchor)) this.editing = false;
+    } else if (this.editing) {
       const words = this.words();
       const anchorWord = wordAt(words, this.editAnchor);
       const caretWord = wordAt(words, this.el.selectionStart);

@@ -27,7 +27,7 @@ Settings are grouped as Page, Slate, Speech and sound, and Braille keys, with a 
 
 Each cell's empty dot positions are drawn as faint grey points behind the raised dots, like Duxbury's SimBraille, so it's easy to see where each dot sits. They can be turned off in Settings for raised dots only, as on paper.
 
-In Brailler mode, the print reading of each word appears above it once the word is finished, with a space, a new line, or by moving away from it, and that's when it's checked. A word left unfinished on the slate is read when you switch to Brailler, and one left unfinished when the page was closed is read when it opens. To see the reading change with every cell instead, turn on "Show the print of a word while writing it" in Settings; the word being written is still only checked once it's finished.
+In Brailler mode, the print reading of each word appears above it once the word is finished, with a space, a new line, or by moving away from it, and that's when it's checked. A word left unfinished on the slate is read when you switch to Brailler, and one left unfinished when the page was closed is read when it opens. In Settings, feedback can instead come as each cell is written, showing how the word reads so far (it's still only checked once finished), or once each line is finished, with Enter or by moving off the line. With a screen reader, writing as each cell is written announces the reading so far in place of the cell's name. Whatever the choice, Alt+W reads the word at the cursor, and checks it if it's finished. The Feedback switch turns feedback on or off, and is remembered.
 
 Press Command+/ (Ctrl+/ on Windows and Linux) in Dotwright for the instructions and keyboard shortcuts.
 

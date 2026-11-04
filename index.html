@@ -111,9 +111,14 @@
     <dialog id="settings-dialog" aria-labelledby="settings-title">
       <h2 id="settings-title">Settings</h2>
       <fieldset>
+        <legend>Feedback</legend>
+        <label class="check"><input type="radio" name="feedback-when" value="cell" /> As each cell is written</label>
+        <label class="check"><input type="radio" name="feedback-when" value="word" /> When each word is finished</label>
+        <label class="check"><input type="radio" name="feedback-when" value="line" /> When each line is finished</label>
+      </fieldset>
+      <fieldset>
         <legend>Page</legend>
         <label class="check"><input type="checkbox" id="show-empty-dots" /> Show empty dot positions</label>
-        <label class="check"><input type="checkbox" id="live-interlining" /> Show the print of a word while writing it</label>
       </fieldset>
       <fieldset>
         <legend>Slate</legend>
@@ -165,6 +170,10 @@
       <p>
         A word is checked when you finish it with Space or Enter. Backspace, the arrow keys and
         undo work as usual.
+      </p>
+      <p>
+        In Settings, feedback can instead come as each cell is written, showing how the word reads
+        so far, or once each line is finished.
       </p>
 
       <h3>Slate mode</h3>

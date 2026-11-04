@@ -41,7 +41,7 @@ for (const browserType of [chromium, webkit]) {
   await type(page, ' ');
   await page.waitForTimeout(80);
   check('completed uncontracted word is flagged', (await page.locator('.mark.differs').count()) === 1);
-  check('space announces issue', (await announced(page)).includes('contraction error'), await announced(page));
+  check('space reads the finished word, and its issue', (await lastSaid(page)) === 'and, contraction error', await lastSaid(page));
   check('print interlining shows learner reading', (await page.locator('.print').first().textContent()) === 'and');
 
   await type(page, '& ! cat4 ');
@@ -87,6 +87,19 @@ for (const browserType of [chromium, webkit]) {
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowRight');
   check('typing letters does nothing', await (async () => { await page.keyboard.press('q'); return !(await ta.inputValue()).includes('q'); })());
+  {
+    // As Option+W does on a Mac, past the keys: the text area never takes it.
+    const before = await ta.inputValue();
+    const inputs = await page.evaluate(() => { window.inputs = 0; document.getElementById('editor').addEventListener('input', () => window.inputs++); });
+    await page.keyboard.insertText('∑');
+    check('typed symbols never reach the text area', (await ta.inputValue()) === before && (await page.evaluate(() => window.inputs)) === 0, await ta.inputValue());
+    await page.keyboard.down('Alt');
+    check('holding Option alone makes the field read-only, so it types nothing', await ta.evaluate((el) => el.readOnly));
+    const at = await ta.evaluate((el) => el.selectionStart);
+    await page.keyboard.press('ArrowRight');
+    check('but Option+arrow still moves', !(await ta.evaluate((el) => el.readOnly)) && (await ta.evaluate((el) => el.selectionStart)) !== at);
+    await page.keyboard.up('Alt');
+  }
   await page.keyboard.press('Alt+KeyT');
   check('feedback off hides print, marks and the popover', (await page.locator('.print, .mark').count()) === 0 && await page.locator('#word-popover').isHidden());
   await page.keyboard.press('Alt+KeyT');
@@ -220,7 +233,7 @@ for (const browserType of [chromium, webkit]) {
   await page.keyboard.press('Escape');
   await openSettings();
   check('Escape leaves the keys as they were', (await page.inputValue('#dot-keys')) === 'd c x h , .', await page.inputValue('#dot-keys'));
-  check('settings are grouped', (await page.locator('#settings-dialog legend').allTextContents()).join('|') === 'Page|Slate|Speech and sound|Braille keys');
+  check('settings are grouped', (await page.locator('#settings-dialog legend').allTextContents()).join('|') === 'Feedback|Page|Slate|Speech and sound|Braille keys');
   check('dot numbers are off by default', !(await page.isChecked('#slate-numbers')));
   await page.uncheck('#sounds');
   check('the bell is one of the sounds', await page.isDisabled('#margin-bell'));
@@ -377,17 +390,49 @@ for (const browserType of [chromium, webkit]) {
   await chord(page, 'i');
   check('writing more of it takes the interlining away', !(await prints()).includes('knowledge') && (await ta.inputValue()).endsWith('\nki'),
     JSON.stringify(await prints()));
+  const feedbackWhen = async (value) => {
+    await openSettings();
+    await page.check(`input[name="feedback-when"][value="${value}"]`);
+    await page.click('#settings-done button.primary');
+  };
   await openSettings();
-  check('interlining each word as it is written is off by default', !(await page.isChecked('#live-interlining')));
-  await page.check('#live-interlining');
+  check('feedback comes when each word is finished by default', await page.isChecked('input[name="feedback-when"][value="word"]'));
   await page.click('#settings-done button.primary');
-  check('with it on, the word being written is interlined, unchecked',
+  await feedbackWhen('cell');
+  check('with feedback as each cell is written, the word being written is interlined, unchecked',
     (await page.locator('.print.live').allTextContents()).join() === 'ki' && (await page.locator('.print.live.differs, .print.live.unreadable').count()) === 0,
     JSON.stringify(await prints()));
   await chord(page, 'n');
-  check('and the interlining follows each cell', (await page.locator('.print.live').allTextContents()).join() !== 'ki', JSON.stringify(await prints()));
+  await page.waitForTimeout(80);
+  const liveReading = (await page.locator('.print.live').allTextContents()).join();
+  check('and the interlining follows each cell', liveReading !== 'ki', JSON.stringify(await prints()));
+  check('and each cell is announced by the reading so far, not its name', (await lastSaid(page)) === liveReading, await lastSaid(page));
+  await page.keyboard.press('Alt+KeyW');
+  await page.waitForTimeout(80);
+  check('Alt+W reads the word so far', (await lastSaid(page)).startsWith(`${liveReading}, so far.`), await lastSaid(page));
+
+  // Feedback when each line is finished: nothing on the line until then.
+  await feedbackWhen('line');
+  await page.keyboard.press('Space');
+  await chord(page, '!');
+  await page.keyboard.press('Space');
+  check('with feedback when each line is finished, the line being written isn\'t interlined', !(await prints()).includes('the'), JSON.stringify(await prints()));
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Alt+KeyW');
+  await page.waitForTimeout(80);
+  check('but Alt+W still checks a finished word on it', (await lastSaid(page)).startsWith('the. No contraction error'), await lastSaid(page));
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  check('until it\'s finished', (await prints()).includes('the'), JSON.stringify(await prints()));
+  await page.waitForTimeout(80);
+  check('and Enter reads the line', (await lastSaid(page)).endsWith(" the, contraction error, new line"), await lastSaid(page));
+
+  check('there is no Off among the choices: the Feedback switch is that', (await page.locator('input[name="feedback-when"]').count()) === 3);
+  await page.keyboard.press('Alt+KeyT');
+  await page.keyboard.press('Alt+KeyT');
   await openSettings();
-  await page.uncheck('#live-interlining');
+  check('the switch leaves the choice as it was', await page.isChecked('input[name="feedback-when"][value="line"]'));
+  await page.check('input[name="feedback-when"][value="word"]');
   await page.click('#settings-done button.primary');
 
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Slash' : 'Control+Slash');
