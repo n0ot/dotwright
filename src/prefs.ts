@@ -25,7 +25,8 @@ export interface Prefs {
   marginBell: boolean;
   /**
    * When sounds and feedback are on, a soft sound when a finished word has an
-   * error, and another when one is put right.
+   * error, another when one is put right, and a chime when a text being
+   * transcribed is finished with no errors.
    */
   errorSound: boolean;
   /**

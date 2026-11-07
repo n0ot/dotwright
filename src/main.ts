@@ -9,7 +9,7 @@ import { BELL_CELLS_LEFT, CELLS_PER_LINE, LINES_PER_PAGE, lineNumberOf, offsetOf
 import { DEFAULT_DOT_KEYS, describeDotKeys, loadDotKeys, parseDotKeys, saveDotKeys } from './keymap';
 import { keepCaretOnKeyboardFocus } from './focusCaret';
 import { initLouis, toBraille } from './louis';
-import { playBell, playClick, playError, playFixed, playStop } from './click';
+import { playBell, playClick, playError, playFinished, playFixed, playStop } from './click';
 import {
   brailleOffsetFor as brailleOffsetForText,
   compare,
@@ -138,9 +138,10 @@ const editor = new BrailleEditor(textarea, {
     const parts: string[] = [];
     if (kind === 'space' || kind === 'newline') parts.push(...completedWordParts(kind));
     else if (kind === 'undo' || kind === 'redo') parts.push(kind === 'undo' ? 'Undo' : 'Redo');
+    let finished: string | null = null;
     if (kind === 'load') syncFinished();
     else {
-      const finished = finishedNews();
+      finished = finishedNews();
       if (finished) parts.push(finished);
     }
     if (parts.length) say(parts.join(', '));
@@ -149,14 +150,15 @@ const editor = new BrailleEditor(textarea, {
     scheduleRecovery();
     render();
     if (kind === 'load') syncErrorSounds();
-    else errorSounds();
+    else errorSounds(celebrate(finished));
   },
   select() {
     dropRevealIfMoved();
-    const parts = [announceErrorChange(), finishedNews()].filter((p): p is string => Boolean(p));
+    const finished = finishedNews();
+    const parts = [announceErrorChange(), finished].filter((p): p is string => Boolean(p));
     if (parts.length) say(parts.join('. '));
     render();
-    errorSounds();
+    errorSounds(celebrate(finished));
   },
   cell(ch) {
     if (!echoCells) return;
@@ -518,6 +520,7 @@ function toggleFeedback() {
   setFeedbackOn(!feedbackOn);
   // Turned on after writing a whole passage without it, it's the time to hear how it went.
   const finished = finishedNews();
+  celebrate(finished);
   say(feedbackOn ? `Feedback on.${finished ? ` ${finished}` : ''}` : 'Feedback off.');
 }
 
@@ -1049,15 +1052,16 @@ function currentSummary(): string | null {
 
 /**
  * The error sounds. When a word is finished with an error, or an error
- * appears, such as a word left out, a soft falling sound; when an error is put
- * right, a rising one. Words being written aren't counted, so starting to put
- * a word right isn't mistaken for having done it.
+ * appears, such as a word left out, a soft falling sound; when a word is put
+ * right, a rising one. The sound for putting a word right comes when the
+ * right word is finished, not when the wrong one is changed or erased: that's
+ * only the start of putting it right. Words being written aren't counted.
  */
 let marksHeard: number | null = null;
 /** Where the words being written started, at the last change, to know which were just finished. */
 let wordsBeingWritten: number[] = [];
 
-function errorSounds() {
+function errorSounds(quiet = false) {
   if (!feedbackShown()) {
     marksHeard = null;
     return;
@@ -1075,14 +1079,28 @@ function errorSounds() {
     return;
   }
   const justFinished = states.filter((s) => wordsBeingWritten.includes(s.word.start));
-  const sounds = prefs.sounds && prefs.errorSound;
-  if (marks > marksHeard || justFinished.some(hasIssue)) {
-    if (sounds) playError();
-  } else if (marks < marksHeard) {
-    if (sounds) playFixed();
-  }
-  marksHeard = marks;
   wordsBeingWritten = [];
+  const sounds = prefs.sounds && prefs.errorSound && !quiet;
+  if (justFinished.some(hasIssue) || marks > marksHeard) {
+    if (sounds) playError();
+    marksHeard = marks;
+  } else if (marks < marksHeard && justFinished.length) {
+    if (sounds) playFixed();
+    marksHeard = marks;
+  }
+  // Fewer errors with no word finished, as when a wrong word is erased to be
+  // written again: the count is kept, so writing it again is heard as the fix.
+}
+
+/**
+ * A short chime, warmer than the sound for a fix, when the whole text is
+ * finished with no errors: once, at the end, so it stays special. Returns
+ * whether it played, so the sound for the last fix doesn't play over it.
+ */
+function celebrate(finished: string | null): boolean {
+  if (!finished || !finished.includes('no errors') || !prefs.sounds || !prefs.errorSound) return false;
+  playFinished();
+  return true;
 }
 
 /** Starts counting errors afresh, without a sound: the page changed for another reason than writing. */
@@ -1483,6 +1501,7 @@ function turnOver() {
   syncErrorSounds();
   // Turned over to check a whole passage written on the slate: how it went.
   const finished = finishedNews();
+  celebrate(finished);
   // Once the page has opened out, so the cursor is measured where it ends up.
   if (reducedMotion.matches) revealSlateCursor();
   else setTimeout(revealSlateCursor, 200);

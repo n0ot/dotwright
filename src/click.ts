@@ -96,9 +96,27 @@ export function playError(): void {
 /** The same two notes rising: a word with an error was put right. */
 export function playFixed(): void {
   ring([
-    [523.25, 0.09, 0.22],
-    [1569.75, 0.012, 0.08],
-    [784, 0.09, 0.4, 0.1],
-    [2352, 0.012, 0.1, 0.1],
+    [523.25, 0.12, 0.22],
+    [1569.75, 0.016, 0.08],
+    [784, 0.12, 0.4, 0.1],
+    [2352, 0.016, 0.1, 0.1],
   ]);
+}
+
+/**
+ * A rising chime, with a bell's shimmer on its last note: the whole text is
+ * written with no errors.
+ */
+export function playFinished(): void {
+  const notes = [659.25, 783.99, 1046.5, 1318.51];
+  ring(
+    notes.flatMap((f, i): [number, number, number, number][] => {
+      const last = i === notes.length - 1;
+      return [
+        [f, 0.11, last ? 1.2 : 0.3, i * 0.09],
+        [f * 2, 0.02, last ? 0.6 : 0.12, i * 0.09],
+        ...(last ? ([[f * 3, 0.008, 0.35, i * 0.09]] as [number, number, number, number][]) : []),
+      ];
+    }),
+  );
 }

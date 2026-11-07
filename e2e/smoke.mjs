@@ -446,7 +446,7 @@ for (const browserType of [chromium, webkit]) {
 
   // ---- Transcribing a text ----
   // Sounds are told apart by their first note: 392 Hz falls (an error), 523.25 Hz rises (put right).
-  await page.evaluate(() => {
+  const listen = () => page.evaluate(() => {
     window.notes = [];
     const create = AudioContext.prototype.createOscillator;
     AudioContext.prototype.createOscillator = function () {
@@ -455,6 +455,7 @@ for (const browserType of [chromium, webkit]) {
       return osc;
     };
   });
+  await listen();
   const notes = async () => { await page.waitForTimeout(60); return page.evaluate(() => window.notes.splice(0)); };
   await page.click('#new-doc');
   check('no text card without a text', await page.locator('#source').isHidden());
@@ -497,6 +498,7 @@ for (const browserType of [chromium, webkit]) {
   check('clicking a word left out puts the braille cursor where it goes', (await caret()) === (await ta.inputValue()).indexOf('on'), String(await caret()));
   await type(page, 'sat ');
   check('writing it takes the caret away', (await page.locator('.overlay .skip').count()) === 0);
+  check('and plays the sound for a fix', (await notes()).includes(523.25));
   await page.keyboard.press(LINE_END);
   await page.keyboard.press('Backspace');
   await type(page, '4 ');
@@ -504,6 +506,10 @@ for (const browserType of [chromium, webkit]) {
   check('finishing the text shows a summary', (await page.locator('#source-summary').textContent()) === 'Finished, with no errors.',
     await page.locator('#source-summary').textContent());
   check('and says it', (await lastSaid(page)).endsWith('Finished, with no errors.'), await lastSaid(page));
+  {
+    const heard = await notes();
+    check('with a chime, in place of the sound for the last fix', heard.includes(659.25) && !heard.includes(523.25), JSON.stringify(heard));
+  }
 
   await page.keyboard.press('Shift+Tab');
   check('Shift+Tab from the braille goes to the text', await page.evaluate(() => document.activeElement.id === 'source-text'));
@@ -525,6 +531,7 @@ for (const browserType of [chromium, webkit]) {
   await page.waitForTimeout(500);
   await page.reload();
   await page.waitForFunction(() => !document.querySelector('#editor').disabled);
+  await listen();
   check('the text is restored after a refresh', (await page.locator('#source-view').textContent()) === 'The cat sat on the mat.');
   await page.click('#new-doc');
   check('New keeps the text, for another try', await page.locator('#source').isVisible() && (await ta.inputValue()) === '');
@@ -534,6 +541,15 @@ for (const browserType of [chromium, webkit]) {
   await page.click('#source-remove');
   await page.waitForTimeout(80);
   check('the text can be removed', await page.locator('#source').isHidden() && (await lastSaid(page)) === 'Text removed.');
+
+  // Erasing a wrong word is only the start of putting it right: the sound for a fix waits for the right word.
+  await notes();
+  await type(page, 'and ');
+  check('a contraction error sounds when the word is finished', (await notes()).includes(392));
+  for (let i = 0; i < 4; i++) await page.keyboard.press('Backspace');
+  check('erasing it makes no sound', (await notes()).length === 0);
+  await type(page, '& ');
+  check('writing the right word plays the sound for a fix', (await notes()).includes(523.25));
 
   check('no page errors', errors.length === 0, errors.join('; '));
   await browser.close();
