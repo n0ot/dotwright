@@ -42,12 +42,12 @@ function audio(): AudioContext {
   return context;
 }
 
-/** Plays decaying sine partials, starting together. */
-function ring(partials: [frequency: number, gain: number, seconds: number][]): void {
+/** Plays decaying sine partials, each starting after its delay, if it has one. */
+function ring(partials: [frequency: number, gain: number, seconds: number, delay?: number][]): void {
   try {
     const ctx = audio();
-    const now = ctx.currentTime;
-    for (const [frequency, level, seconds] of partials) {
+    for (const [frequency, level, seconds, delay = 0] of partials) {
+      const now = ctx.currentTime + delay;
       const osc = ctx.createOscillator();
       osc.frequency.value = frequency;
       const gain = ctx.createGain();
@@ -77,5 +77,28 @@ export function playStop(): void {
   ring([
     [180, 0.35, 0.12],
     [260, 0.15, 0.08],
+  ]);
+}
+
+/**
+ * Two soft notes falling: a word has an error, so have a look. It's a nudge,
+ * quieter and gentler than the knock or the bell.
+ */
+export function playError(): void {
+  ring([
+    [392, 0.12, 0.22],
+    [1176, 0.015, 0.08],
+    [330, 0.12, 0.32, 0.1],
+    [990, 0.015, 0.08, 0.1],
+  ]);
+}
+
+/** The same two notes rising: a word with an error was put right. */
+export function playFixed(): void {
+  ring([
+    [523.25, 0.09, 0.22],
+    [1569.75, 0.012, 0.08],
+    [784, 0.09, 0.4, 0.1],
+    [2352, 0.012, 0.1, 0.1],
   ]);
 }

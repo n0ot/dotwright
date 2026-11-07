@@ -444,6 +444,97 @@ for (const browserType of [chromium, webkit]) {
   check('instructions name the keys for this system', modKey === (process.platform === 'darwin' ? 'Command' : 'Ctrl'), modKey);
   await page.keyboard.press('Escape');
 
+  // ---- Transcribing a text ----
+  // Sounds are told apart by their first note: 392 Hz falls (an error), 523.25 Hz rises (put right).
+  await page.evaluate(() => {
+    window.notes = [];
+    const create = AudioContext.prototype.createOscillator;
+    AudioContext.prototype.createOscillator = function () {
+      const osc = create.call(this);
+      setTimeout(() => window.notes.push(osc.frequency.value));
+      return osc;
+    };
+  });
+  const notes = async () => { await page.waitForTimeout(60); return page.evaluate(() => window.notes.splice(0)); };
+  await page.click('#new-doc');
+  check('no text card without a text', await page.locator('#source').isHidden());
+  await page.click('#transcribe');
+  check('Transcribe opens an empty box to paste into', await page.evaluate(() => document.activeElement.id === 'source-input')
+    && (await page.getAttribute('#source-input', 'placeholder')) === 'Paste the text to transcribe');
+  await page.fill('#source-input', 'The cat sat on the mat.');
+  await page.click('#source-done');
+  check('Done shows the text and returns to the braille', (await page.locator('#source-view span').count()) === 6
+    && await page.evaluate(() => document.activeElement.id === 'editor'));
+  check('the first word is the one to write', (await page.locator('#source-view .here').textContent()) === 'The');
+  await type(page, '! cat on ! mat ');
+  await page.waitForTimeout(80);
+  check('a missing capital and full stop are marked in the print',
+    JSON.stringify(await page.locator('.print.text-differs').allTextContents()) === '["the","mat"]', JSON.stringify(await page.locator('.print').allTextContents()));
+  check('a word left out is marked with a caret, and underlined in the text',
+    (await page.locator('.overlay .skip').count()) === 1 && (await page.locator('#source-view .skipped').textContent()) === 'sat');
+  check('written words fade in the text', (await page.locator('#source-view .done').count()) === 5);
+  check('finishing a word that differs says so, and reaching the end gives what\'s left to fix',
+    (await lastSaid(page)) === 'mat, differs from text, Finished. To fix: capitals in 1 word, punctuation in 1 word and 1 word left out.', await lastSaid(page));
+  check('which is shown under the text', (await page.locator('#source-summary').textContent()).startsWith('Finished. To fix:'));
+  check('and plays the error sound', (await notes()).includes(392));
+  await page.keyboard.press(LINE_START);
+  await page.waitForTimeout(80);
+  check('arriving on it says how it differs', (await lastSaid(page)) === 'differs from text', await lastSaid(page));
+  await page.keyboard.press('Alt+KeyW');
+  await page.waitForTimeout(80);
+  check('Alt+W says it differs from the text', (await lastSaid(page)) === 'the. Differs from the text. No contraction error.', await lastSaid(page));
+  await page.keyboard.press('Alt+KeyR');
+  await page.waitForTimeout(80);
+  check('Alt+R gives the braille for the text', (await lastSaid(page)).startsWith('Correct form: comma exclamation.'), await lastSaid(page));
+  await page.keyboard.press('Escape');
+  await chord(page, ',');
+  check('putting it right makes no sound until the word is finished', (await notes()).length === 0);
+  await page.keyboard.press(LINE_END);
+  check('then the fixed sound plays', (await notes()).includes(523.25));
+  check('and the mark goes', (await page.locator('.print.text-differs').count()) === 1);
+
+  await page.locator('#source-view span', { hasText: 'sat' }).click();
+  check('clicking a word left out puts the braille cursor where it goes', (await caret()) === (await ta.inputValue()).indexOf('on'), String(await caret()));
+  await type(page, 'sat ');
+  check('writing it takes the caret away', (await page.locator('.overlay .skip').count()) === 0);
+  await page.keyboard.press(LINE_END);
+  await page.keyboard.press('Backspace');
+  await type(page, '4 ');
+  await page.waitForTimeout(80);
+  check('finishing the text shows a summary', (await page.locator('#source-summary').textContent()) === 'Finished, with no errors.',
+    await page.locator('#source-summary').textContent());
+  check('and says it', (await lastSaid(page)).endsWith('Finished, with no errors.'), await lastSaid(page));
+
+  await page.keyboard.press('Shift+Tab');
+  check('Shift+Tab from the braille goes to the text', await page.evaluate(() => document.activeElement.id === 'source-text'));
+  await page.keyboard.press(LINE_START);
+  await page.waitForTimeout(50);
+  for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(50);
+  check('the braille cursor follows the text cursor', (await caret()) === 3, String(await caret()));
+  check('and the text card shows the word at it', (await page.locator('#source-view .here').textContent()) === 'cat');
+  await page.keyboard.press('q');
+  check('the text is read-only there', (await page.inputValue('#source-text')) === 'The cat sat on the mat.');
+  await page.keyboard.press('Tab');
+  check('Tab returns to the braille at the same word', await page.evaluate(() => document.activeElement.id === 'editor') && (await caret()) === 3);
+
+  await page.keyboard.press('Alt+KeyT');
+  check('with feedback off, nothing is marked, but the text still fades',
+    (await page.locator('.print, .skip').count()) === 0 && (await page.locator('#source-view .done').count()) === 6 && await page.locator('#source-summary').isHidden());
+  await page.keyboard.press('Alt+KeyT');
+  await page.waitForTimeout(500);
+  await page.reload();
+  await page.waitForFunction(() => !document.querySelector('#editor').disabled);
+  check('the text is restored after a refresh', (await page.locator('#source-view').textContent()) === 'The cat sat on the mat.');
+  await page.click('#new-doc');
+  check('New keeps the text, for another try', await page.locator('#source').isVisible() && (await ta.inputValue()) === '');
+  await page.click('#source-edit');
+  await page.keyboard.press('Escape');
+  check('Escape leaves editing without changes', (await page.locator('#source-view').textContent()) === 'The cat sat on the mat.');
+  await page.click('#source-remove');
+  await page.waitForTimeout(80);
+  check('the text can be removed', await page.locator('#source').isHidden() && (await lastSaid(page)) === 'Text removed.');
+
   check('no page errors', errors.length === 0, errors.join('; '));
   await browser.close();
 }

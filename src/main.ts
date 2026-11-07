@@ -8,8 +8,20 @@ import { openBrf, saveBrf, type FileHandle } from './files';
 import { BELL_CELLS_LEFT, CELLS_PER_LINE, LINES_PER_PAGE, lineNumberOf, offsetOf, positionOf, wordAt, type Word } from './layout';
 import { DEFAULT_DOT_KEYS, describeDotKeys, loadDotKeys, parseDotKeys, saveDotKeys } from './keymap';
 import { keepCaretOnKeyboardFocus } from './focusCaret';
-import { initLouis } from './louis';
-import { playBell, playClick, playStop } from './click';
+import { initLouis, toBraille } from './louis';
+import { playBell, playClick, playError, playFixed, playStop } from './click';
+import {
+  brailleOffsetFor as brailleOffsetForText,
+  compare,
+  sourceOffsetFor,
+  tally,
+  tokenAtCaret,
+  tokenizeSource,
+  type Comparison,
+  type SourceToken,
+  type WordMatch,
+  type Written,
+} from './source';
 import { SLATE_ICONS } from './slateIcons';
 import { DEFAULTS as DEFAULT_PREFS, loadPrefs, savePrefs, type FeedbackWhen } from './prefs';
 import { clearRecovery, loadRecovery, writeRecovery } from './recovery';
@@ -47,6 +59,15 @@ const soundsInput = byId<HTMLInputElement>('sounds');
 const slateNumbersInput = byId<HTMLInputElement>('slate-numbers');
 const echoCellsInput = byId<HTMLInputElement>('echo-cells');
 const marginBellInput = byId<HTMLInputElement>('margin-bell');
+const errorSoundInput = byId<HTMLInputElement>('error-sound');
+const sourceBox = byId('source');
+const sourceView = byId('source-view');
+const sourceText = byId<HTMLTextAreaElement>('source-text');
+const sourceInput = byId<HTMLTextAreaElement>('source-input');
+const sourceSummary = byId('source-summary');
+const sourceEditButton = byId('source-edit');
+const sourceDoneButton = byId('source-done');
+holdOffOptionTyping(sourceText);
 /** When feedback is given, or Off, in Settings. */
 const feedbackWhenInputs = [...document.querySelectorAll<HTMLInputElement>('input[name="feedback-when"]')];
 
@@ -114,17 +135,28 @@ const say = (message: string) => announcer.say(message);
 const editor = new BrailleEditor(textarea, {
   change(kind) {
     if ((kind === 'cell' || kind === 'space') && prefs.sounds && prefs.marginBell && atBellCell()) playBell();
-    if (kind === 'space' || kind === 'newline') announceCompletedWord(kind);
-    else if (kind === 'undo' || kind === 'redo') say(kind === 'undo' ? 'Undo' : 'Redo');
+    const parts: string[] = [];
+    if (kind === 'space' || kind === 'newline') parts.push(...completedWordParts(kind));
+    else if (kind === 'undo' || kind === 'redo') parts.push(kind === 'undo' ? 'Undo' : 'Redo');
+    if (kind === 'load') syncFinished();
+    else {
+      const finished = finishedNews();
+      if (finished) parts.push(finished);
+    }
+    if (parts.length) say(parts.join(', '));
     dropRevealIfMoved();
     errorWordStart = errorWordAtCaret();
     scheduleRecovery();
     render();
+    if (kind === 'load') syncErrorSounds();
+    else errorSounds();
   },
   select() {
     dropRevealIfMoved();
-    announceErrorChange();
+    const parts = [announceErrorChange(), finishedNews()].filter((p): p is string => Boolean(p));
+    if (parts.length) say(parts.join('. '));
     render();
+    errorSounds();
   },
   cell(ch) {
     if (!echoCells) return;
@@ -202,13 +234,51 @@ interface WordState {
   word: Word;
   /** Null while the word is unfinished. */
   feedback: WordFeedback | null;
+  /** How it compares with the text being transcribed, if there is one. */
+  match: WordMatch | null;
 }
 
 function wordStates(): WordState[] {
   const words = editor.words();
   const unfinished = editor.unfinishedWords(words);
   const feedback = checkDocument(editor.text);
-  return words.map((word) => ({ word, feedback: unfinished.has(word) ? null : feedback.get(word.start)! }));
+  const states: WordState[] = words.map((word) => ({
+    word,
+    feedback: unfinished.has(word) ? null : feedback.get(word.start)!,
+    match: null,
+  }));
+  const cmp = comparison(states);
+  if (cmp) states.forEach((state, i) => (state.match = cmp.words[i]));
+  return states;
+}
+
+// ---- The text being transcribed -------------------------------------------
+
+/** The text being transcribed, or "" for free writing. */
+let source = '';
+let sourceTokens: SourceToken[] = [];
+/** Counts changes to the text, to know when a comparison is out of date. */
+let sourceVersion = 0;
+let editingSource = false;
+let lastComparison: { key: string; cmp: Comparison } | null = null;
+
+/**
+ * How the words compare with the text. Unfinished words aren't judged, and
+ * with feedback hidden none are, but they still follow the learner's place.
+ */
+function comparison(states: { word: Word; feedback: WordFeedback | null }[]): Comparison | null {
+  if (!sourceTokens.length) return null;
+  const shown = feedbackShown();
+  const written: Written[] = states.map(({ word, feedback }) => ({
+    braille: word.text.toLowerCase(),
+    print: shown && feedback && feedback.status !== 'unreadable' ? feedback.print : null,
+    checked: shown && feedback !== null,
+  }));
+  const key = `${sourceVersion}\u0001${written
+    .map((w) => `${w.checked ? 1 : 0}${w.print === null ? '' : `${w.braille}\u0002${w.print}`}`)
+    .join('\u0000')}`;
+  if (lastComparison?.key !== key) lastComparison = { key, cmp: compare(sourceTokens, written, toBraille) };
+  return lastComparison.cmp;
 }
 
 function stateAtCaret(): WordState | null {
@@ -222,7 +292,55 @@ function stateAtCaret(): WordState | null {
 
 const isIssue = (f: WordFeedback | null) => f?.status === 'differs' || f?.status === 'unreadable';
 
-function statusText(f: WordFeedback): string {
+/** One thing wrong with a word: how it's announced, labelled, and coloured. */
+interface Issue {
+  kind: 'text' | 'differs' | 'unreadable';
+  spoken: string;
+  label: string;
+}
+
+const leftOut = (m: WordMatch) => {
+  const n = m.skipped![1] - m.skipped![0];
+  return n === 1 ? 'word left out' : `${n} words left out`;
+};
+
+/** What's wrong with a finished word: how it differs from the text, and its contraction error. */
+function issuesOf(state: WordState): Issue[] {
+  const issues: Issue[] = [];
+  const m = state.match;
+  if (m?.differences.includes('extra')) issues.push({ kind: 'text', spoken: 'not in text', label: 'Not in the text' });
+  else if (m?.differences.length) issues.push({ kind: 'text', spoken: 'differs from text', label: 'Differs from the text' });
+  if (m?.skipped) {
+    const what = leftOut(m);
+    issues.push({ kind: 'text', spoken: what, label: `${what[0].toUpperCase()}${what.slice(1)} before` });
+  }
+  const f = state.feedback;
+  if (f?.status === 'differs') issues.push({ kind: 'differs', spoken: 'contraction error', label: 'Contraction error' });
+  else if (f?.status === 'unreadable') issues.push({ kind: 'unreadable', spoken: "can't read", label: "Can't read this braille" });
+  return issues;
+}
+
+const hasIssue = (state: WordState) => issuesOf(state).length > 0;
+const spokenIssues = (state: WordState) =>
+  issuesOf(state)
+    .map((i) => i.spoken)
+    .join(', ');
+
+/** Everything known about a finished word: how it compares with the text, and its contractions. */
+function statusText(state: WordState, f = state.feedback!): string {
+  const parts: string[] = [];
+  const m = state.match;
+  if (m && state.feedback) {
+    if (m.differences.includes('extra')) parts.push('Not in the text.');
+    else if (m.differences.length) parts.push('Differs from the text.');
+    if (m.skipped) parts.push(`${leftOut(m).replace(/^w/, 'W')} before this one.`);
+    if (!parts.length) parts.push('Matches the text.');
+  }
+  parts.push(contractionStatus(f));
+  return parts.join(' ');
+}
+
+function contractionStatus(f: WordFeedback): string {
   const inGrade1 = f.passage === 'grade 1' ? ' in a grade 1 passage' : '';
   switch (f.status) {
     case 'matches':
@@ -236,27 +354,32 @@ function statusText(f: WordFeedback): string {
   }
 }
 
-/** Short name of a word's problem, for announcements. */
-const issueName = (f: WordFeedback) => (f.status === 'unreadable' ? "can't read" : 'contraction error');
-
 function errorWordAtCaret(): number | null {
   if (!feedbackShown()) return null;
   const state = stateAtCaret();
-  return state && isIssue(state.feedback) ? state.word.start : null;
+  return state && hasIssue(state) ? state.word.start : null;
 }
 
+/** Whether the word last announced as having an error had only a contraction error. */
+let errorWasContraction = true;
+
 /**
- * Says "contraction error" when the caret moves onto a word with an error and
- * "out of contraction error" when it leaves, once per word, so reading cell
- * by cell inside a word isn't interrupted.
+ * What to say when the caret moves onto a word with an error ("contraction
+ * error", "differs from text") or leaves it ("out of error"), once per word,
+ * so reading cell by cell inside a word isn't interrupted.
  */
-function announceErrorChange() {
+function announceErrorChange(): string | null {
   const now = errorWordAtCaret();
-  if (now === errorWordStart) return;
+  if (now === errorWordStart) return null;
   const was = errorWordStart;
   errorWordStart = now;
-  if (now !== null) say(issueName(checkDocument(editor.text).get(now)!));
-  else if (was !== null) say('out of contraction error');
+  if (now !== null) {
+    const state = stateAtCaret()!;
+    errorWasContraction = issuesOf(state).every((i) => i.kind !== 'text');
+    return spokenIssues(state);
+  }
+  if (was !== null) return errorWasContraction ? 'out of contraction error' : 'out of error';
+  return null;
 }
 
 /**
@@ -265,9 +388,8 @@ function announceErrorChange() {
  * With feedback as each cell is written, the word was heard as it was written,
  * so only its error is said.
  */
-function announceCompletedWord(kind: 'space' | 'newline') {
+function completedWordParts(kind: 'space' | 'newline'): string[] {
   const caret = editor.selectionStart;
-  const feedback = checkDocument(editor.text);
   const name = kind === 'space' ? 'space' : 'new line';
   const parts: string[] = [];
   const when = prefs.feedbackWhen;
@@ -275,24 +397,24 @@ function announceCompletedWord(kind: 'space' | 'newline') {
     if (kind === 'newline') {
       const end = caret - 1;
       const start = editor.text.lastIndexOf('\n', end - 1) + 1;
-      const words = editor.words().filter((w) => w.start >= start && w.end <= end);
-      const issues = words.filter((w) => isIssue(feedback.get(w.start)!));
-      if (words.length) parts.push(words.map((w) => feedback.get(w.start)!.print).join(' '));
-      if (issues.length === 1) parts.push(issueName(feedback.get(issues[0].start)!));
+      const states = wordStates().filter((s) => s.word.start >= start && s.word.end <= end && s.feedback);
+      const issues = states.filter(hasIssue);
+      if (states.length) parts.push(states.map((s) => s.feedback!.print).join(' '));
+      if (issues.length === 1) parts.push(spokenIssues(issues[0]));
       else if (issues.length) parts.push(`${issues.length} errors`);
     }
     if (echoCells) parts.push(name);
   } else if (feedbackShown()) {
-    const word = editor.words().find((w) => w.end === caret - 1);
-    const f = word && feedback.get(word.start)!;
+    const state = wordStates().find((s) => s.word.end === caret - 1 && s.feedback);
+    const f = state?.feedback;
     if (f && when === 'word') parts.push(f.print);
-    if (f && isIssue(f)) parts.push(issueName(f));
+    if (state && hasIssue(state)) parts.push(spokenIssues(state));
     // The word says a space finished it; a new line is still worth naming.
     if (echoCells && !(f && when === 'word' && kind === 'space')) parts.push(name);
   } else if (echoCells) {
     parts.push(name);
   }
-  if (parts.length) say(parts.join(', '));
+  return parts;
 }
 
 function dropRevealIfMoved() {
@@ -306,15 +428,33 @@ function dropRevealIfMoved() {
  * deliberate, so a word is checked as soon as it's finished, even while the
  * page waits for the end of its line; only the word being written isn't.
  */
-function askedAbout(): { word: Word; feedback: WordFeedback; unfinished: boolean } | null {
+function askedAbout(): { state: WordState; feedback: WordFeedback; unfinished: boolean } | null {
   const words = editor.words();
   const word = wordAt(words, editor.selectionStart);
   if (!word) return null;
   return {
-    word,
+    state: wordStates().find((s) => s.word.start === word.start)!,
     feedback: checkDocument(editor.text).get(word.start)!,
     unfinished: editor.unfinishedWords(words, 'word').has(word),
   };
+}
+
+/**
+ * The correct braille for a word. For a word that differs from the text, it's
+ * the text's, with any words left out before it; otherwise it's the fully
+ * contracted form of what was written. Null if there's none, as for a word
+ * that isn't in the text.
+ */
+function referenceFor(state: WordState, f: WordFeedback): string | null {
+  const m = state.match;
+  if (!m || !state.feedback || !issuesOf(state).some((i) => i.kind === 'text')) return f.reference;
+  if (m.from === m.to) return null;
+  const from = m.skipped ? m.skipped[0] : m.from;
+  const text = sourceTokens
+    .slice(from, m.to)
+    .map((t) => t.text)
+    .join(' ');
+  return toBraille(text)?.toLowerCase() ?? null;
 }
 
 function speakWordFeedback() {
@@ -323,7 +463,7 @@ function speakWordFeedback() {
   if (!asked) return say('No word at the cursor.');
   const f = asked.feedback;
   if (asked.unfinished) return say(`${f.print}, so far. Checked once the word is finished.`);
-  say(`${f.print}. ${statusText(f)}`);
+  say(`${f.print}. ${statusText(asked.state, f)}`);
 }
 
 function revealReference() {
@@ -332,13 +472,14 @@ function revealReference() {
   if (!asked) return say('No word at the cursor.');
   const f = asked.feedback;
   if (asked.unfinished) return say('Finish the word first, with Space or Enter.');
-  if (!f.reference) return say(statusText(f));
-  revealedAt = asked.word.start;
+  const reference = referenceFor(asked.state, f);
+  if (!reference) return say(statusText(asked.state, f));
+  revealedAt = asked.state.word.start;
   render();
   say(
-    f.reference === f.braille
-      ? `Correct form: ${spell(f.reference)}. Same as your entry.`
-      : `Correct form: ${spell(f.reference)}. Your entry: ${spell(f.braille)}.`,
+    reference === f.braille
+      ? `Correct form: ${spell(reference)}. Same as your entry.`
+      : `Correct form: ${spell(reference)}. Your entry: ${spell(f.braille)}.`,
   );
 }
 
@@ -351,8 +492,8 @@ function hideReference() {
 
 function moveToIssue(direction: 1 | -1) {
   if (!feedbackShown()) return say(feedbackHiddenMessage());
-  const issues = wordStates().filter((s) => isIssue(s.feedback));
-  if (!issues.length) return say('No contraction errors.');
+  const issues = wordStates().filter(hasIssue);
+  if (!issues.length) return say(sourceTokens.length ? 'No errors.' : 'No contraction errors.');
   const caret = editor.selectionStart;
   const target =
     direction === 1
@@ -370,12 +511,14 @@ function moveToIssue(direction: 1 | -1) {
   }
   const f = target.feedback!;
   const { page, line } = positionOf(editor.text, target.word.start);
-  say(`${f.print}. ${statusText(f)} Page ${page}, line ${line}.`);
+  say(`${f.print}. ${statusText(target)} Page ${page}, line ${line}.`);
 }
 
 function toggleFeedback() {
   setFeedbackOn(!feedbackOn);
-  say(feedbackOn ? 'Feedback on.' : 'Feedback off.');
+  // Turned on after writing a whole passage without it, it's the time to hear how it went.
+  const finished = finishedNews();
+  say(feedbackOn ? `Feedback on.${finished ? ` ${finished}` : ''}` : 'Feedback off.');
 }
 
 /** The Feedback switch. Remembered. */
@@ -388,6 +531,7 @@ function setFeedbackOn(on: boolean) {
   revealedAt = null;
   errorWordStart = errorWordAtCaret();
   render();
+  syncErrorSounds();
 }
 
 // ---- Rendering ------------------------------------------------------------
@@ -489,7 +633,9 @@ function renderPage(states: WordState[], lineOf: (offset: number) => number, lin
   if (feedbackShown()) {
     const settings = [cell, labelFont(false), prefs.feedbackWhen].join('|');
     // Each line's words, with what's shown for them.
-    const byLine = new Map<number, { word: Word; feedback: WordFeedback; live: boolean }[]>();
+    /** How a word differs from the text: its print is underlined, or struck through if it isn't in the text. */
+    type TextMark = '' | 'text-differs' | 'text-extra';
+    const byLine = new Map<number, { word: Word; feedback: WordFeedback; live: boolean; text: TextMark; skipped: boolean }[]>();
     for (const state of states) {
       const { word } = state;
       // The word being written is only read, not checked, and only if asked for.
@@ -499,23 +645,34 @@ function renderPage(states: WordState[], lineOf: (offset: number) => number, lin
       const line = lineOf(word.start);
       let list = byLine.get(line);
       if (!list) byLine.set(line, (list = []));
-      list.push({ word, feedback, live });
+      const differences = state.match?.differences ?? [];
+      const text: TextMark = differences.includes('extra') ? 'text-extra' : differences.length ? 'text-differs' : '';
+      list.push({ word, feedback, live, text, skipped: Boolean(state.match?.skipped) });
     }
     for (const [line, words] of byLine) {
       // Where the words are within the line, so a cell written earlier in the document doesn't redraw it.
       const at = lineStarts[line];
-      const key = [settings, line, ...words.map(({ word, feedback, live }) =>
-        `${word.start - at}:${word.end - at}:${feedback.status}:${live}:${feedback.print}`)].join('\u0000');
+      const key = [settings, line, ...words.map(({ word, feedback, live, text, skipped }) =>
+        `${word.start - at}:${word.end - at}:${feedback.status}:${live}:${text}:${skipped}:${feedback.print}`)].join('\u0000');
       drawPart(`line ${line}`, key, () => {
         let lastRight = -Infinity;
-        for (const { word, feedback, live } of words) {
+        for (const { word, feedback, live, text, skipped } of words) {
           const x = PAD + (word.start - lineStarts[line]) * cell;
           const top = line * LINE;
           const issue = !live && isIssue(feedback);
+          const bold = issue || text !== '';
           // Print is usually wider than its braille; shift labels right rather than overlap.
-          const labelX = Math.max(x, lastRight + 6);
-          lastRight = labelX + labelWidth(labelFont(issue), feedback.print);
-          place(`print${issue ? ` ${feedback.status}` : ''}${live ? ' live' : ''}`, labelX, top + GLYPH_TOP - 19, undefined, feedback.print);
+          // Words left out go just before this one's, marked with a caret as a proofreader would.
+          const labelX = Math.max(x, lastRight + (skipped ? 18 : 6));
+          if (skipped) place('skip', labelX - 11, top + GLYPH_TOP - 19, undefined, '‸');
+          lastRight = labelX + labelWidth(labelFont(bold), feedback.print);
+          place(
+            `print${issue ? ` ${feedback.status}` : ''}${text ? ` ${text}` : ''}${live ? ' live' : ''}`,
+            labelX,
+            top + GLYPH_TOP - 19,
+            undefined,
+            feedback.print,
+          );
           if (issue) place(`mark ${feedback.status}`, x, top + GLYPH_TOP + FONT_SIZE * 0.86, (word.end - word.start) * cell);
         }
       }, seen);
@@ -547,7 +704,7 @@ function render() {
   cursorParts = [];
   placingCursorParts = false;
   renderPage(states, lineOf, lineStarts);
-  printAnchor = overlay.querySelector('.print, .mark');
+  printAnchor = overlay.querySelector('.print, .mark, .skip');
   placingCursorParts = true;
 
   if (!display) place('empty-hint', PAD, TOP + LINE + 8, undefined, emptyHint());
@@ -587,6 +744,7 @@ function render() {
   const caretState = states.find((s) => s.word === caretWord) ?? null;
   renderPopover(caretState, caretState ? lineOf(caretState.word.start) : 0, lineStarts);
   renderPrintView(states, lineOf, lineStarts.length);
+  renderSource(states);
   renderFileStatus();
   renderSlate();
 }
@@ -687,6 +845,7 @@ if (/Apple/.test(navigator.vendor)) {
   const fieldNames = new Map<EventTarget, string>([
     [textarea, 'Braille document'],
     [printView, 'Print interlining'],
+    [sourceText, 'Text to transcribe'],
   ]);
   for (const [field, name] of fieldNames) {
     field.addEventListener('focus', (e) => {
@@ -703,6 +862,293 @@ keepCaretOnKeyboardFocus(printView, () => {
   return [offset, offset];
 });
 
+// ---- The text card ----------------------------------------------------------
+
+/**
+ * The text being transcribed is shown above the page as a card, like a book
+ * beside the paper. Words already written fade, and the word at the braille
+ * cursor is highlighted, so the learner's place is always in sight. With
+ * feedback, words left out are underlined. Screen readers read a hidden copy
+ * of the text instead, whose cursor and the braille cursor follow each other.
+ */
+let sourceSpans: HTMLSpanElement[] = [];
+let sourceClasses: string[] = [];
+let sourceHere: number | null = null;
+
+function setSource(text: string) {
+  source = text.trim() ? text : '';
+  sourceTokens = tokenizeSource(source);
+  sourceVersion++;
+  const parts: Node[] = [];
+  let at = 0;
+  sourceSpans = sourceTokens.map((token, i) => {
+    if (token.start > at) parts.push(document.createTextNode(source.slice(at, token.start)));
+    const span = document.createElement('span');
+    span.dataset.i = String(i);
+    span.textContent = token.text;
+    parts.push(span);
+    at = token.end;
+    return span;
+  });
+  sourceView.replaceChildren(...parts);
+  sourceView.scrollTop = 0;
+  sourceClasses = [];
+  sourceHere = null;
+  sourceText.value = source;
+  showSourceMode();
+  revealedAt = null;
+  errorWordStart = errorWordAtCaret();
+  render();
+  syncFinished();
+  syncErrorSounds();
+  scheduleRecovery();
+}
+
+/** Shows the card for reading, or for pasting or editing the text, or hides it when there's no text. */
+function showSourceMode() {
+  sourceBox.hidden = !source && !editingSource;
+  sourceBox.classList.toggle('editing', editingSource);
+  sourceInput.hidden = !editingSource;
+  sourceDoneButton.hidden = !editingSource;
+  sourceView.hidden = editingSource;
+  sourceText.hidden = editingSource;
+  sourceEditButton.hidden = editingSource;
+}
+
+function editSource() {
+  editingSource = true;
+  sourceInput.value = source;
+  showSourceMode();
+  render();
+  sourceInput.focus();
+  sourceInput.setSelectionRange(source.length, source.length);
+}
+
+/** Leaves editing, keeping the changes or not. With no text left, the card goes. */
+function finishEditingSource(keep: boolean) {
+  if (!editingSource) return;
+  editingSource = false;
+  const text = keep ? sourceInput.value : source;
+  setSource(text);
+  textarea.focus();
+  if (!source) say('No text to transcribe.');
+}
+
+function removeSource() {
+  editingSource = false;
+  setSource('');
+  textarea.focus();
+  say('Text removed.');
+}
+
+function renderSource(states: WordState[]) {
+  sourceBox.hidden = !source && !editingSource;
+  const cmp = editingSource ? null : comparison(states);
+  if (!cmp) {
+    sourceSummary.hidden = true;
+    return;
+  }
+  const spans = states.map((s) => s.word);
+  const reading = document.activeElement === sourceText;
+  // Reading the text, the word at its cursor; otherwise the word at the braille cursor, or the next to write.
+  let here: number | null;
+  if (reading) {
+    const t = sourceTokens.findIndex((tok) => sourceText.selectionStart <= tok.end);
+    here = t < 0 ? null : t;
+  } else {
+    here = tokenAtCaret(spans, cmp, editor.selectionStart);
+  }
+  const shown = feedbackShown();
+  const skipped = new Set<number>();
+  if (shown) for (const m of cmp.words) if (m.skipped) for (let t = m.skipped[0]; t < m.skipped[1]; t++) skipped.add(t);
+  for (let t = 0; t < sourceTokens.length; t++) {
+    const done = t < cmp.reached && !skipped.has(t);
+    const className = `${done ? 'done' : ''}${skipped.has(t) ? ' skipped' : ''}${t === here ? ' here' : ''}`.trim();
+    if (sourceClasses[t] !== className) {
+      sourceSpans[t].className = className;
+      sourceClasses[t] = className;
+    }
+  }
+  if (here !== sourceHere) {
+    sourceHere = here;
+    if (here !== null && sourceSpans[here]) keepSourceWordInView(sourceSpans[here]);
+  }
+  if (!reading) {
+    const offset = sourceOffsetFor(spans, cmp, sourceTokens, editor.selectionStart, source.length);
+    if (sourceText.selectionStart !== offset || sourceText.selectionEnd !== offset) sourceText.setSelectionRange(offset, offset);
+  }
+  const summary = shown && cmp.finished ? summaryText(cmp, states) : '';
+  sourceSummary.hidden = !summary;
+  if (sourceSummary.textContent !== summary) sourceSummary.textContent = summary;
+}
+
+/** Scrolls the card so the word is in view, with the line before it for context when there's room. */
+function keepSourceWordInView(span: HTMLElement, instant = false) {
+  const view = sourceView;
+  const lineHeight = parseFloat(getComputedStyle(view).lineHeight) || 26;
+  const top = span.offsetTop;
+  const bottom = top + span.offsetHeight;
+  if (top >= view.scrollTop && bottom <= view.scrollTop + view.clientHeight) return;
+  const context = view.clientHeight >= 3 * lineHeight ? lineHeight : 0;
+  const padding = parseFloat(getComputedStyle(view).paddingTop) || 0;
+  view.scrollTo({ top: Math.max(0, top - context - padding), behavior: instant || reducedMotion.matches ? 'auto' : 'smooth' });
+}
+
+// The text rewraps when the card changes width, as when the slate takes its place beside the page.
+new ResizeObserver(() => {
+  if (sourceHere !== null && sourceSpans[sourceHere]) keepSourceWordInView(sourceSpans[sourceHere], true);
+}).observe(sourceView);
+
+/** Joins items as a list: "a, b and c". */
+const listOf = (items: string[]) => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`);
+const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
+/**
+ * Once the whole text is written, what's left to fix, by kind, so patterns
+ * show: "capitals in 4 words" says more than four separate marks.
+ */
+function summaryText(cmp: Comparison, states: WordState[]): string {
+  const t = tally(cmp);
+  const contraction = states.filter((s) => s.feedback?.status === 'differs').length;
+  const unreadable = states.filter((s) => s.feedback?.status === 'unreadable').length;
+  const items: string[] = [];
+  if (t.capitals) items.push(`capitals in ${plural(t.capitals, 'word')}`);
+  if (t.punctuation) items.push(`punctuation in ${plural(t.punctuation, 'word')}`);
+  if (t.spelling) items.push(`spelling in ${plural(t.spelling, 'word')}`);
+  if (t.skipped) items.push(`${plural(t.skipped, 'word')} left out`);
+  if (t.extra) items.push(plural(t.extra, 'extra word'));
+  if (contraction) items.push(plural(contraction, 'contraction error'));
+  if (unreadable) items.push(`${plural(unreadable, 'word')} that can't be read`);
+  return items.length ? `Finished. To fix: ${listOf(items)}.` : 'Finished, with no errors.';
+}
+
+/** The summary last announced, so it's said when the text is finished, and again only when that changes. */
+let finishedSaid: string | null = null;
+
+/** The summary, if the text has just been finished; otherwise null. */
+function finishedNews(): string | null {
+  const now = currentSummary();
+  if (now === finishedSaid) return null;
+  const was = finishedSaid;
+  finishedSaid = now;
+  // Said when it's first finished; after that, only once everything is put right.
+  return now && (was === null || now.includes('no errors')) ? now : null;
+}
+
+/** Notes whether the text is finished, without announcing it, as when a document is opened. */
+function syncFinished() {
+  finishedSaid = currentSummary();
+}
+
+function currentSummary(): string | null {
+  if (!sourceTokens.length || editingSource || !feedbackShown()) return null;
+  const states = wordStates();
+  const cmp = comparison(states)!;
+  return cmp.finished ? summaryText(cmp, states) : null;
+}
+
+/**
+ * The error sounds. When a word is finished with an error, or an error
+ * appears, such as a word left out, a soft falling sound; when an error is put
+ * right, a rising one. Words being written aren't counted, so starting to put
+ * a word right isn't mistaken for having done it.
+ */
+let marksHeard: number | null = null;
+/** Where the words being written started, at the last change, to know which were just finished. */
+let wordsBeingWritten: number[] = [];
+
+function errorSounds() {
+  if (!feedbackShown()) {
+    marksHeard = null;
+    return;
+  }
+  const states = wordStates();
+  const marks = states.filter(hasIssue).length;
+  const writing = states.filter((s) => !s.feedback).map((s) => s.word.start);
+  if (marksHeard === null) {
+    marksHeard = marks;
+    wordsBeingWritten = writing;
+    return;
+  }
+  if (writing.length) {
+    wordsBeingWritten = writing;
+    return;
+  }
+  const justFinished = states.filter((s) => wordsBeingWritten.includes(s.word.start));
+  const sounds = prefs.sounds && prefs.errorSound;
+  if (marks > marksHeard || justFinished.some(hasIssue)) {
+    if (sounds) playError();
+  } else if (marks < marksHeard) {
+    if (sounds) playFixed();
+  }
+  marksHeard = marks;
+  wordsBeingWritten = [];
+}
+
+/** Starts counting errors afresh, without a sound: the page changed for another reason than writing. */
+function syncErrorSounds() {
+  marksHeard = null;
+  wordsBeingWritten = [];
+  errorSounds();
+}
+
+// Reading the text moves the braille cursor to the same place, as the print view does.
+let lastSourceCaret = -1;
+function followSourceCaret() {
+  if (document.activeElement !== sourceText || sourceText.selectionStart === lastSourceCaret) return;
+  lastSourceCaret = sourceText.selectionStart;
+  const states = wordStates();
+  const cmp = comparison(states);
+  if (!cmp) return;
+  const offset = brailleOffsetForText(states.map((s) => s.word), cmp, sourceTokens, lastSourceCaret, editor.text.length);
+  if (offset !== editor.selectionStart) editor.placeCaret(offset);
+  else render();
+}
+// Not a readonly field, because Chrome won't move the caret in one; edits are refused instead.
+sourceText.addEventListener('beforeinput', (e) => e.preventDefault());
+document.addEventListener('selectionchange', followSourceCaret);
+sourceText.addEventListener('keyup', followSourceCaret);
+sourceText.addEventListener('focus', () => {
+  lastSourceCaret = -1;
+  render();
+});
+sourceText.addEventListener('blur', () => render());
+keepCaretOnKeyboardFocus(sourceText, () => {
+  const offset = sourceText.selectionStart;
+  return [offset, offset];
+});
+
+// Clicking a word of the text takes the braille cursor there, to write it.
+sourceView.addEventListener('click', (e) => {
+  if (getSelection()?.toString()) return;
+  const span = (e.target as Element).closest<HTMLElement>('[data-i]');
+  const states = wordStates();
+  const cmp = comparison(states);
+  if (!span || !cmp) return;
+  const token = sourceTokens[Number(span.dataset.i)];
+  editor.moveTo(brailleOffsetForText(states.map((s) => s.word), cmp, sourceTokens, token.start, editor.text.length));
+});
+
+byId('transcribe').addEventListener('click', editSource);
+sourceEditButton.addEventListener('click', editSource);
+sourceDoneButton.addEventListener('click', () => finishEditingSource(true));
+byId('source-remove').addEventListener('click', removeSource);
+sourceInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation();
+    finishEditingSource(false);
+  } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault();
+    finishEditingSource(true);
+  }
+});
+
+/** Keeps the page clear of the card, which stays at the top as the page scrolls. */
+new ResizeObserver(() => {
+  document.documentElement.style.setProperty('--source-height', `${sourceBox.hidden ? 0 : sourceBox.offsetHeight}px`);
+}).observe(sourceBox);
+
 /**
  * A small card under the word at the caret when it has an error, so a mouse
  * user can show its correct form. It doesn't take focus, so the caret stays
@@ -711,24 +1157,27 @@ keepCaretOnKeyboardFocus(printView, () => {
 function renderPopover(state: WordState | null, line: number, lineStarts: number[]) {
   const f = state?.feedback;
   // Not while reading the print view: it's for the mouse, at the document.
-  popover.hidden = !feedbackShown() || !state || !f || !isIssue(f) || document.activeElement === printView;
+  popover.hidden = !feedbackShown() || !state || !f || !hasIssue(state) || document.activeElement === printView;
   if (popover.hidden || !state || !f) return;
   const parts: Node[] = [];
-  const label = document.createElement('span');
-  label.className = `label ${f.status}`;
-  label.textContent = f.status === 'unreadable' ? "Can't read this braille" : 'Contraction error';
-  parts.push(label);
-  if (f.reference) {
+  for (const issue of issuesOf(state)) {
+    const label = document.createElement('span');
+    label.className = `label ${issue.kind}`;
+    label.textContent = issue.label;
+    parts.push(label);
+  }
+  const reference = referenceFor(state, f);
+  if (reference) {
     if (revealedAt === state.word.start) {
       const correct = document.createElement('span');
       correct.className = 'correct';
       const dots = document.createElement('span');
       dots.className = 'braille';
-      dots.textContent = f.reference;
+      dots.textContent = reference;
       // Dot numbers, as learners know them, rather than Braille ASCII.
       const numbers = document.createElement('span');
       numbers.className = 'dot-numbers';
-      numbers.textContent = [...f.reference].map((ch) => (ch === ' ' ? 'space' : dotsOf(charToMask(ch)))).join(' ');
+      numbers.textContent = [...reference].map((ch) => (ch === ' ' ? 'space' : dotsOf(charToMask(ch)))).join(' ');
       correct.append('Correct:', dots, numbers);
       parts.push(correct, popoverButton('Hide', hideReference));
     } else {
@@ -1031,14 +1480,13 @@ function turnOver() {
   errorWordStart = errorWordAtCaret();
   showSide();
   render();
+  syncErrorSounds();
+  // Turned over to check a whole passage written on the slate: how it went.
+  const finished = finishedNews();
   // Once the page has opened out, so the cursor is measured where it ends up.
   if (reducedMotion.matches) revealSlateCursor();
   else setTimeout(revealSlateCursor, 200);
-  say(
-    side === 'back'
-      ? 'Slate mode, with no feedback.'
-      : 'Brailler mode.',
-  );
+  say(side === 'back' ? 'Slate mode, with no feedback.' : `Brailler mode.${finished ? ` ${finished}` : ''}`);
 }
 
 /** Shows the page and the slate for the current mode. */
@@ -1113,7 +1561,7 @@ function scheduleRecovery() {
 
 function updateRecovery() {
   clearTimeout(recoveryTimer);
-  const ok = writeRecovery({ text: editor.text, fileName, savedText });
+  const ok = writeRecovery({ text: editor.text, fileName, savedText, source });
   if (ok) {
     recoveryWarning.textContent = '';
   } else if (!recoveryWarning.textContent) {
@@ -1227,6 +1675,8 @@ function discard() {
   revealedAt = null;
   clearTimeout(recoveryTimer);
   clearRecovery();
+  // A fresh sheet for the same text: it stays, to try again.
+  if (source) updateRecovery();
   render();
   textarea.focus();
   say('New document.');
@@ -1251,11 +1701,12 @@ function setEchoCells(on: boolean) {
 }
 
 /** The checkboxes in Settings, each with the preference it sets. */
-const checkboxSettings: [HTMLInputElement, 'shadowDots' | 'slateNumbers' | 'sounds' | 'marginBell'][] = [
+const checkboxSettings: [HTMLInputElement, 'shadowDots' | 'slateNumbers' | 'sounds' | 'marginBell' | 'errorSound'][] = [
   [showEmptyDots, 'shadowDots'],
   [slateNumbersInput, 'slateNumbers'],
   [soundsInput, 'sounds'],
   [marginBellInput, 'marginBell'],
+  [errorSoundInput, 'errorSound'],
 ];
 
 /** Shows the preferences in Settings, and applies them to the page. */
@@ -1264,10 +1715,12 @@ function applyPrefs() {
   for (const input of feedbackWhenInputs) input.checked = input.value === prefs.feedbackWhen;
   editor.finishedBy = prefs.feedbackWhen === 'line' ? 'line' : 'word';
   echoCellsInput.checked = echoCells;
-  // The bell is one of the sounds.
+  // The bell and the error sounds are among the sounds.
   marginBellInput.disabled = !prefs.sounds;
+  errorSoundInput.disabled = !prefs.sounds;
   document.body.classList.toggle('slate-numbers', prefs.slateNumbers);
   render();
+  syncErrorSounds();
 }
 
 for (const [input, key] of checkboxSettings) {
@@ -1398,6 +1851,8 @@ gotoDialog.addEventListener('close', () => gotoReturn.focus());
 window.addEventListener('keydown', (e) => {
   if (help.open || saveDialog.open || gotoDialog.open || settingsDialog.open) return;
   const mod = e.ctrlKey || e.metaKey;
+  // Typing the text: Option types accents and symbols there.
+  if (e.altKey && !mod && document.activeElement === sourceInput) return;
   if (e.altKey && !mod) {
     const commands: Record<string, () => void> = {
       KeyW: speakWordFeedback,
@@ -1510,6 +1965,7 @@ async function start() {
     fileName = copy.fileName;
     savedText = copy.savedText;
   }
+  setSource(copy?.source ?? '');
   textarea.disabled = false;
   // Continue where the learner left off.
   editor.moveTo(editor.text.length);

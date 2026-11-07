@@ -24,6 +24,11 @@ export interface Prefs {
   /** Ring a bell near the end of a line, like a braillewriter's margin bell, when sounds are on. */
   marginBell: boolean;
   /**
+   * When sounds and feedback are on, a soft sound when a finished word has an
+   * error, and another when one is put right.
+   */
+  errorSound: boolean;
+  /**
    * The mode last used: Brailler ("front"), with six-key entry on the page as
    * read, or Slate ("back"), on the page mirrored as on a slate.
    */
@@ -36,6 +41,7 @@ export const DEFAULTS: Readonly<Prefs> = {
   sounds: true,
   slateNumbers: false,
   marginBell: true,
+  errorSound: true,
   feedbackWhen: 'word',
   feedbackOn: true,
   side: 'front',

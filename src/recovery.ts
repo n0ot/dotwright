@@ -6,6 +6,8 @@ export interface RecoveryCopy {
   fileName: string | null;
   /** The text as last saved to a BRF file, or null if never saved. */
   savedText: string | null;
+  /** The text being transcribed, if any. It isn't saved in the BRF file. */
+  source?: string;
 }
 
 export function loadRecovery(): RecoveryCopy | null {

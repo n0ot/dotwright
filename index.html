@@ -38,6 +38,7 @@
             <button type="button" id="open-doc">Open…</button>
             <button type="button" id="save-doc">Save</button>
             <button type="button" id="save-as-doc" hidden>Save as…</button>
+            <button type="button" id="transcribe">Transcribe…</button>
           </div>
           <div class="toolbar-end">
             <button type="button" id="show-settings">Settings</button>
@@ -48,6 +49,43 @@
 
       <main>
         <p id="file-status" class="file-status"></p>
+        <!--
+          The text being transcribed, like a book beside the page. Its words are
+          drawn in the view, which follows the learner's place; screen readers
+          read the hidden text field instead, which moves the braille cursor as
+          it's read, like the print view.
+        -->
+        <div id="source" class="source" hidden>
+          <div class="source-card">
+            <div class="source-actions">
+              <button type="button" id="source-edit" class="icon-button" aria-label="Edit text" title="Edit text">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 20h4L19 9l-4-4L4 16v4z" /><path d="M13.5 6.5l4 4" /></svg>
+              </button>
+              <button type="button" id="source-remove" class="icon-button" aria-label="Remove text" title="Remove text">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </div>
+            <div id="source-view" class="source-view" aria-hidden="true"></div>
+            <textarea
+              id="source-text"
+              class="visually-hidden"
+              aria-label="Text to transcribe"
+              aria-readonly="true"
+              spellcheck="false"
+              autocomplete="off"
+            ></textarea>
+            <textarea
+              id="source-input"
+              class="source-input"
+              aria-label="Text to transcribe"
+              placeholder="Paste the text to transcribe"
+              spellcheck="false"
+              hidden
+            ></textarea>
+            <button type="button" id="source-done" class="primary source-done" hidden>Done</button>
+          </div>
+          <p id="source-summary" class="source-summary" hidden></p>
+        </div>
         <label for="editor" class="visually-hidden">Braille document</label>
         <div class="sheet-frame">
           <div class="sheet-scroll">
@@ -129,6 +167,7 @@
         <label class="check"><input type="checkbox" id="echo-cells" /> Announce each cell</label>
         <label class="check"><input type="checkbox" id="sounds" /> Play sounds</label>
         <label class="check sub"><input type="checkbox" id="margin-bell" /> Ring a bell near the end of a line</label>
+        <label class="check sub"><input type="checkbox" id="error-sound" /> Sound when a word has an error</label>
       </fieldset>
       <form id="keys-form" class="keys-setting">
         <fieldset>
@@ -208,6 +247,13 @@
         follows it.
       </p>
 
+      <h3>Transcribing</h3>
+      <p>
+        Transcribe… takes text to copy into braille. A word that differs from it has its print
+        underlined, and ‸ marks words left out. The text comes before the braille in the tab
+        order, and its cursor and the braille cursor follow each other.
+      </p>
+
       <h3>Saving your work</h3>
       <p>
         Save a BRF file to keep your work. If the page is closed or refreshed, it's restored from a
@@ -228,7 +274,7 @@
           <tr><td>Undo, redo</td><td><kbd class="mod">Ctrl</kbd>+<kbd>Z</kbd>, <kbd class="mod">Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td></tr>
           <tr><td>Print and feedback for the word at the cursor</td><td><kbd class="alt">Alt</kbd>+<kbd>W</kbd></td></tr>
           <tr><td>Show the correct form of the word (<kbd>Escape</kbd> hides it)</td><td><kbd class="alt">Alt</kbd>+<kbd>R</kbd></td></tr>
-          <tr><td>Next or previous contraction error</td><td><kbd class="alt">Alt</kbd>+<kbd>N</kbd>, <kbd class="alt">Alt</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd></td></tr>
+          <tr><td>Next or previous error</td><td><kbd class="alt">Alt</kbd>+<kbd>N</kbd>, <kbd class="alt">Alt</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd></td></tr>
           <tr><td>Feedback on or off</td><td><kbd class="alt">Alt</kbd>+<kbd>T</kbd></td></tr>
           <tr><td>Where the cursor is: page, line and cell</td><td><kbd class="alt">Alt</kbd>+<kbd>L</kbd></td></tr>
           <tr><td>Go to a line and cell (line 26 is the first line of page 2)</td><td><kbd class="alt">Alt</kbd>+<kbd>G</kbd></td></tr>
