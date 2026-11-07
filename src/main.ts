@@ -150,7 +150,10 @@ const editor = new BrailleEditor(textarea, {
     scheduleRecovery();
     render();
     if (kind === 'load') syncErrorSounds();
-    else errorSounds(celebrate(finished));
+    else {
+      errorSounds(celebrate(finished));
+      chimeEarly();
+    }
   },
   select() {
     dropRevealIfMoved();
@@ -268,14 +271,18 @@ let lastComparison: { key: string; cmp: Comparison } | null = null;
  * How the words compare with the text. Unfinished words aren't judged, and
  * with feedback hidden none are, but they still follow the learner's place.
  */
-function comparison(states: { word: Word; feedback: WordFeedback | null }[]): Comparison | null {
-  if (!sourceTokens.length) return null;
+function writtenWords(states: { word: Word; feedback: WordFeedback | null }[]): Written[] {
   const shown = feedbackShown();
-  const written: Written[] = states.map(({ word, feedback }) => ({
+  return states.map(({ word, feedback }) => ({
     braille: word.text.toLowerCase(),
     print: shown && feedback && feedback.status !== 'unreadable' ? feedback.print : null,
     checked: shown && feedback !== null,
   }));
+}
+
+function comparison(states: { word: Word; feedback: WordFeedback | null }[]): Comparison | null {
+  if (!sourceTokens.length) return null;
+  const written = writtenWords(states);
   const key = `${sourceVersion}\u0001${written
     .map((w) => `${w.checked ? 1 : 0}${w.print === null ? '' : `${w.braille}\u0002${w.print}`}`)
     .join('\u0000')}`;
@@ -1099,8 +1106,44 @@ function errorSounds(quiet = false) {
  */
 function celebrate(finished: string | null): boolean {
   if (!finished || !finished.includes('no errors') || !prefs.sounds || !prefs.errorSound) return false;
-  playFinished();
+  if (!chimed) playFinished();
+  chimed = true;
   return true;
+}
+
+/** Whether the chime has played for the text as it now stands, so it isn't heard twice. */
+let chimed = false;
+
+/**
+ * The chime comes as the last cell of the text is written, not only once the
+ * word is finished with a space: only the sound comes early; the words are
+ * still marked, and "Finished" said, once they're finished. Unfinished words
+ * are judged here as if finished, only when every finished word is right, so
+ * this costs nothing until the very end.
+ */
+function chimeEarly() {
+  if (!sourceTokens.length || editingSource || !feedbackShown()) {
+    chimed = false;
+    return;
+  }
+  const states = wordStates();
+  if (!states.some((s) => !s.feedback)) {
+    // Everything is finished: the summary decides, as it's announced.
+    if (!currentSummary()?.includes('no errors')) chimed = false;
+    return;
+  }
+  const last = states.at(-1)!;
+  if (last.feedback || states.some(hasIssue)) {
+    chimed = false;
+    return;
+  }
+  const document = checkDocument(editor.text);
+  const all = states.map((s) => ({ ...s, feedback: s.feedback ?? document.get(s.word.start)! }));
+  const cmp = compare(sourceTokens, writtenWords(all), toBraille);
+  all.forEach((s, i) => (s.match = cmp.words[i]));
+  const clean = cmp.finished && !all.some(hasIssue);
+  if (clean && !chimed && prefs.sounds && prefs.errorSound) playFinished();
+  chimed = clean;
 }
 
 /** Starts counting errors afresh, without a sound: the page changed for another reason than writing. */

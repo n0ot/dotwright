@@ -501,14 +501,17 @@ for (const browserType of [chromium, webkit]) {
   check('and plays the sound for a fix', (await notes()).includes(523.25));
   await page.keyboard.press(LINE_END);
   await page.keyboard.press('Backspace');
-  await type(page, '4 ');
+  await type(page, '4');
+  check('the chime comes with the last cell of a text with no errors', (await notes()).includes(659.25));
+  check('before the word is finished, nothing else is shown', await page.locator('#source-summary').isHidden());
+  await type(page, ' ');
   await page.waitForTimeout(80);
   check('finishing the text shows a summary', (await page.locator('#source-summary').textContent()) === 'Finished, with no errors.',
     await page.locator('#source-summary').textContent());
   check('and says it', (await lastSaid(page)).endsWith('Finished, with no errors.'), await lastSaid(page));
   {
     const heard = await notes();
-    check('with a chime, in place of the sound for the last fix', heard.includes(659.25) && !heard.includes(523.25), JSON.stringify(heard));
+    check('without the chime again, or the sound for the last fix', heard.length === 0, JSON.stringify(heard));
   }
 
   await page.keyboard.press('Shift+Tab');
