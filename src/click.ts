@@ -96,10 +96,10 @@ export function playError(): void {
 /** The same two notes rising: a word with an error was put right. */
 export function playFixed(): void {
   ring([
-    [523.25, 0.12, 0.22],
-    [1569.75, 0.016, 0.08],
-    [784, 0.12, 0.4, 0.1],
-    [2352, 0.016, 0.1, 0.1],
+    [523.25, 0.15, 0.22],
+    [1569.75, 0.02, 0.08],
+    [784, 0.15, 0.4, 0.1],
+    [2352, 0.02, 0.1, 0.1],
   ]);
 }
 
